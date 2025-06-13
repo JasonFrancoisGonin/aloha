@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "module": "ES2022",
+    "declaration": true,
+    "noImplicitAny": false,
+    "removeComments": true,
+    "noLib": false,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "target": "ES2022",
+    "sourceMap": true,
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "esModuleInterop": true
+  },
+  "exclude": ["node_modules", "**/*.spec.ts"]
+}

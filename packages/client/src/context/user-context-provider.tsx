@@ -1,0 +1,63 @@
+/*
+Copyright (C) 2025 European Union
+ 
+Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the
+European Commission – subsequent versions of the EUPL (the “Licence”);
+You may not use this work except in compliance with the Licence.
+You may obtain a copy of the Licence at:
+* https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12 *
+
+Unless required by applicable law or agreed to in writing, software distributed under
+the Licence is distributed on an “AS IS” basis, WITHOUT WARRANTIES OR CONDITIONS
+OF ANY KIND, either express or implied. See the Licence for the specific language
+governing permissions and limitations under the Licence.
+*/
+
+import { getUserInfo } from "@/services/users";
+import { AuthenticationStrategy } from "aloha-shared";
+import React, { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { timer, switchMap, distinctUntilChanged, tap } from "rxjs";
+import { exceptionToMessage } from "../utils/type-utils";
+import { UserContext } from "./contexes";
+import { isEqual } from "@react-hookz/deep-equal";
+
+export default function UserContextProvider({
+  children,
+}: React.PropsWithChildren) {
+  const [user, setUser] = useState<AuthenticationStrategy.UserPrincipal | null>(
+    null
+  );
+
+  useEffect(() => {
+    const refreshUser = async () => {
+      try {
+        return await getUserInfo();
+      } catch (e) {
+        console.error(e);
+        toast.error(`Could not retrieve logged user: ${exceptionToMessage(e)}`);
+      }
+    };
+
+    const timeout = import.meta.env.DEV ? 5_000 : 60_000;
+
+    const subscription = timer(0, timeout)
+      .pipe(
+        switchMap(() => {
+          return refreshUser();
+        }),
+        distinctUntilChanged(isEqual),
+        tap((userInfo: AuthenticationStrategy.UserPrincipal) => {
+          console.log("New user info loaded", userInfo);
+          setUser(userInfo);
+        })
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  return <UserContext.Provider value={user}>{children}</UserContext.Provider>;
+}

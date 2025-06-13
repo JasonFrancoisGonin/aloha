@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "esnext",
+    "moduleResolution": "bundler",
+    "outDir": "./dist-module",
+    "rootDir": "./src",
+    "strictNullChecks": true,
+    "lib": ["es2020"]
+  },
+  "include": ["./src/**/*"]
+}
