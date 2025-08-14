@@ -22,7 +22,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { entrypoint_schemas, schemas } from "aloha-shared";
+import { endpoints_schemas, schemas } from "aloha-shared";
 import { z } from "zod";
 
 import {
@@ -53,7 +53,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 
 const AgentOptionsWithTagStringSchema =
-  entrypoint_schemas.AgentCreateSchema.merge(
+  endpoints_schemas.AgentCreateSchema.merge(
     z.object({
       tags: z.string(),
     })

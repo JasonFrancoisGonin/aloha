@@ -18,8 +18,30 @@ import { cn } from "@/lib/utils";
 export default function PageTitle({
   children,
   className,
+  isConnected,
   ...others
-}: React.ComponentProps<"h1">) {
+}: React.ComponentProps<"h1"> & {
+  isConnected?: boolean;
+}) {
+  if (isConnected !== undefined) {
+    return (
+      <h1 className={cn("text-xl mb-4 font-bold", className)} {...others}>
+        <div>{children}</div>
+        <div
+          className={`flex items-center gap-2 px-3 py-1.5 bg-${isConnected ? "emerald" : "red"}-50 border border-${isConnected ? "emerald" : "red"}-200 rounded-full`}
+        >
+          <div
+            className={`w-2.5 h-2.5 bg-${isConnected ? "emerald" : "red"}-500 rounded-full animate-pulse shadow-sm shadow-${isConnected ? "emerald" : "red"}-200`}
+          ></div>
+          <span
+            className={`text-sm font-medium text-${isConnected ? "emerald" : "red"}-700`}
+          >
+            {isConnected ? "connected" : "disconnected"}
+          </span>
+        </div>
+      </h1>
+    );
+  }
   return (
     <h1 className={cn("text-xl mb-4 font-bold", className)} {...others}>
       {children}

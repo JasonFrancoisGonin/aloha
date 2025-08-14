@@ -13,8 +13,8 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { AuthenticationStrategy } from "aloha-shared";
+import { authentication_strategy } from "aloha-shared";
 import { createContext } from "react";
 
 export const UserContext =
-  createContext<AuthenticationStrategy.UserPrincipal | null>(null);
+  createContext<authentication_strategy.UserPrincipalWithProjects | null>(null);

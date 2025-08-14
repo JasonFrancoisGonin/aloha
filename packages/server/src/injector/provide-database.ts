@@ -28,6 +28,8 @@ import { MongoDBMCPServerOptionsRepository } from "../database/repositories/mong
 import { MongoDBUserRepository } from "../database/repositories/mongodb/mongo-db-user-repository";
 import { getDatabase } from "../database/repositories/mongodb/mongodb";
 import { MongoDBConnectionOptionsRepository } from "../database/repositories/mongodb/monogo-db-connection-options-repository";
+import { TestbedAgentRepository } from "../database/repositories/interfaces/testbed-agent-repository-interface";
+import { MongoDbTestbedAgentRepository } from "../database/repositories/mongodb/mongo-db-testbed-agent-repository";
 
 function connectionOptionsRepositoryFactory(
   serverSecret: string,
@@ -104,6 +106,12 @@ export function provideDatabase<T extends { serverSecret: string }>(
       "agentRepository",
       factoryWithSecret<AgentRepository, MongoDbAgentRepository>(
         MongoDbAgentRepository
+      )
+    )
+    .provideFactory(
+      "testbedAgentRepository",
+      factoryWithSecret<TestbedAgentRepository, MongoDbTestbedAgentRepository>(
+        MongoDbTestbedAgentRepository
       )
     );
 }

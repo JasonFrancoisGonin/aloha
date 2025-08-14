@@ -88,8 +88,8 @@ class ServerSession {
     this.transport = transport;
   }
 
-  public async close() {
-    await this.transport.close();
+  public async close(closeTransport: boolean) {
+    if (closeTransport) await this.transport.close();
     for (const client of Object.values(this.clients)) {
       await client.close();
     }
@@ -106,7 +106,7 @@ class MCPServer {
   constructor(options: schemas.MCPBaseServerWithId) {
     this.options = options;
     this.id = options.id;
-    this.mcpManager = injector.resolve("mcpManager");
+    this.mcpManager = injector().resolve("mcpManager");
   }
 
   public serve(messagesUrl: string) {
@@ -135,8 +135,10 @@ class MCPServer {
         Array.from(this.mcpManager.getConnections()).filter(
           (c: MCPClient) =>
             c.isConnected &&
-            this.options.connections &&
-            this.options.connections.includes(c.connectionOptions.id)
+            ((c.connectionOptions.type === "agent" &&
+              c.id === this.options.id) ||
+              (this.options.connections &&
+                this.options.connections.includes(c.connectionOptions.id)))
         );
 
       const getConnectionsForSession = async (
@@ -239,7 +241,6 @@ class MCPServer {
         async (_request, context) => {
           if (!context.sessionId) throw new Error("Must provide a session");
           const connections = await getConnectionsForSession(context.sessionId);
-
           return {
             tools: connections.map((c) => c.tools).flat(),
           };
@@ -309,7 +310,7 @@ class MCPServer {
         for (const [key, transport] of Object.entries(serverSessions)) {
           try {
             delete serverSessions[key];
-            await transport.close();
+            await transport.close(true);
           } catch (error) {
             logger().error(error);
           }
@@ -464,7 +465,7 @@ class MCPServer {
             transport.onclose = () => {
               if (transport.sessionId) {
                 serverSessions[transport.sessionId]
-                  .close()
+                  .close(false)
                   .then(() => {})
                   .catch((err) => logger().error(err));
                 delete serverSessions[transport.sessionId];

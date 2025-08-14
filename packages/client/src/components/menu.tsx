@@ -13,18 +13,20 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { NavLink } from "react-router";
+import { Link, NavLink } from "react-router";
 import {
   ComputerDesktopIcon,
   HomeIcon,
   RectangleStackIcon,
   ServerStackIcon,
+  UserGroupIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/solid";
-import { ReactNode, useContext } from "react";
-import { TagIcon, UserGroupIcon } from "@heroicons/react/24/outline";
+import { ReactNode, useContext, useEffect, useState } from "react";
+import { TagIcon } from "@heroicons/react/24/outline";
 import { BotIcon } from "lucide-react";
 import { UserContext } from "@/context/contexes";
-// import { InboxStackIcon } from "@heroicons/react/24/solid";
+import { getChangelog } from "@/services/hub";
 
 function CoolNavLink({
   to,
@@ -64,8 +66,29 @@ function CoolNavLink({
 }
 
 export default function Menu() {
+  const [latestVersion, setLatestVersion] = useState("-");
+
+  function getYear() {
+    return new Date().getFullYear();
+  }
+
+  useEffect(() => {
+    async function fetchLatestVersion() {
+      try {
+        const versions = await getChangelog();
+        if (versions.length > 0) {
+          setLatestVersion(`v${versions[0].version}`);
+        }
+      } catch (error) {
+        console.error("Error fetching latest version:", error);
+      }
+    }
+
+    fetchLatestVersion();
+  }, []);
+
   return (
-    <nav className="flex flex-col text-slate-200 py-2 min-w-28">
+    <nav className="flex flex-col text-slate-200 py-2 min-w-28 overflow-y-auto relative">
       <CoolNavLink
         to="/"
         end
@@ -74,7 +97,7 @@ export default function Menu() {
         alwaysActive={true}
       />
       <CoolNavLink
-        to="/mcp-clients"
+        to="/clients"
         icon={<ComputerDesktopIcon className="size-6" />}
         linkText="Clients"
       />
@@ -84,7 +107,12 @@ export default function Menu() {
         linkText="Agents"
       />
       <CoolNavLink
-        to="/mcp-servers"
+        to="/testbed-agents"
+        icon={<WrenchScrewdriverIcon className="size-6" />}
+        linkText="Testbed Agents"
+      />
+      <CoolNavLink
+        to="/servers"
         icon={<ServerStackIcon className="size-6" />}
         linkText="Servers"
       />
@@ -103,6 +131,20 @@ export default function Menu() {
         icon={<TagIcon className="size-6" />}
         linkText="Access tokens"
       />
+      <div className="absolute bottom-4 left-6 right-6 text-slate-400 text-xs space-y-1 text-center">
+        <Link
+          to="/changelog"
+          className="block text-slate-300 hover:text-slate-100 transition-colors mb-1"
+        >
+          {latestVersion}
+        </Link>
+        <Link
+          to="/license"
+          className="block text-slate-300 hover:text-slate-100 transition-colors"
+        >
+          © {getYear()} EU
+        </Link>
+      </div>
     </nav>
   );
 }

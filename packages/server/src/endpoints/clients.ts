@@ -13,18 +13,18 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   ClientRequest,
   ClientRequestSchema,
   CompatibilityCallToolResultSchema,
   CompleteResultSchema,
   GetPromptResultSchema,
+  ListToolsResultSchema,
   ReadResourceResultSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import {
-  AuthenticationStrategy,
-  entrypoint_schemas,
+  authentication_strategy,
+  endpoints_schemas,
   schemas,
 } from "aloha-shared";
 import { Request, Response } from "express";
@@ -42,32 +42,36 @@ import {
   verifyPermission,
 } from "./utils";
 
-const fetchCache = () => injector.resolve("fetchCache");
+const fetchCache = () => injector().resolve("fetchCache");
 
-const mcpManager = () => injector.resolve("mcpManager");
+const mcpManager = () => injector().resolve("mcpManager");
 
-const repository = () => injector.resolve("connectionOptionsRepository");
+const clientRepository = () =>
+  injector().resolve("connectionOptionsRepository");
+const agentRepository = () => injector().resolve("agentRepository");
 
 const serverOptionsRepository = () =>
-  injector.resolve("serverOptionsRepository");
+  injector().resolve("serverOptionsRepository");
 
-const userRepository = () => injector.resolve("userRepository");
+const userRepository = () => injector().resolve("userRepository");
 
 const logger = getLogger("CLIENTS");
 
 export function clientsRoutes() {
+  logger().info("Registering client router");
+
   const router = crudGenerator({
     name: "client",
     logger: logger,
-    repository,
+    repository: clientRepository,
     schema: schemas.MCPConnectionOptionsSchema,
-    readPermissions: [AuthenticationStrategy.Permissions.ClientsRead],
-    writePermissions: [AuthenticationStrategy.Permissions.ClientsWrite],
+    readPermissions: [authentication_strategy.Permissions.ClientsRead],
+    writePermissions: [authentication_strategy.Permissions.ClientsWrite],
     endpoints: {
       list: {
         enableCache: false,
         factory: async (req) => {
-          const servers = await repository().findByPattern({});
+          const servers = await clientRepository().findByPattern({});
 
           const permitted = (
             await Promise.all(
@@ -79,7 +83,7 @@ export function clientsRoutes() {
 
           permitted.sort(stringComparer("name"));
 
-          const detailedServers: entrypoint_schemas.MCPConnectionStatus[] =
+          const detailedServers: endpoints_schemas.MCPConnectionStatus[] =
             permitted.map(({ id, ...server }) => {
               const connection = mcpManager().getConnection(id);
               return {
@@ -103,7 +107,7 @@ export function clientsRoutes() {
         factory: async (req) => {
           assertFieldInObject(req.params, "id", z.string());
           const id = req.params.id;
-          const opts = await repository().findById(id);
+          const opts = await clientRepository().findById(id);
 
           if (opts === null) {
             throw new HTTPError(404, "Client not found");
@@ -122,7 +126,7 @@ export function clientsRoutes() {
             true
           );
 
-          const result: entrypoint_schemas.MCPConnectionDetail = {
+          const result: endpoints_schemas.MCPConnectionDetail = {
             ...opts,
             id,
             isConnected: connection.isConnected,
@@ -139,7 +143,7 @@ export function clientsRoutes() {
         const id = req.params.id;
         const newConnectionOptions =
           req.body as Partial<schemas.MCPConnectionOptions>;
-        const connection = await repository().findById(id);
+        const connection = await clientRepository().findById(id);
 
         if (connection === null) {
           throw new HTTPError(404, "Client not found");
@@ -153,26 +157,30 @@ export function clientsRoutes() {
 
         // If the connection does not have a creator, set it now
         let creator = connection.creator;
+        // if (!authentication_strategy.isUserAuthenticated(req)) {
+        //   throw new HTTPError(500, "Could not resolve the logged user");
+        // }
+        const user = authentication_strategy.getUserFromSession(req);
         if (
           !creator &&
-          req.user?.permissions.includes(
-            AuthenticationStrategy.Permissions.Administration
+          user.permissions.includes(
+            authentication_strategy.Permissions.Administration
           )
         ) {
-          const loggedUser = await userRepository().findById(req.user.id);
+          const loggedUser = await userRepository().findById(user.id);
           if (!loggedUser) {
             throw new HTTPError(500, "Could not resolve the logged user");
           }
           creator = loggedUser.id;
         }
 
-        const performed = await repository().updateById(id, {
+        const performed = await clientRepository().updateById(id, {
           ...newConnectionOptions,
           creator,
           type: "client",
         });
         if (!performed) return false;
-        const connectionOptions = await repository().findById(id);
+        const connectionOptions = await clientRepository().findById(id);
         if (connectionOptions) {
           await mcpManager().reloadConnection(connectionOptions);
           return true;
@@ -183,7 +191,7 @@ export function clientsRoutes() {
       delete: async (req) => {
         assertFieldInObject(req.params, "id", z.string());
         const id = req.params.id;
-        const connection = await repository().findById(id);
+        const connection = await clientRepository().findById(id);
 
         if (connection === null) {
           throw new HTTPError(404, "Client not found");
@@ -203,7 +211,7 @@ export function clientsRoutes() {
             }
           })
         );
-        const deleted = await repository().deleteById(id);
+        const deleted = await clientRepository().deleteById(id);
 
         if (deleted) {
           await mcpManager().removeConnection(id);
@@ -218,9 +226,9 @@ export function clientsRoutes() {
   // Create a new client
   router.post(
     "/",
-    authorise([AuthenticationStrategy.Permissions.ClientsWrite]),
+    authorise([authentication_strategy.Permissions.ClientsWrite]),
     validateRequestBody(
-      entrypoint_schemas.MCPConnectionOptionsCreateSchema,
+      endpoints_schemas.MCPConnectionOptionsCreateSchema,
       logger,
       true
     ),
@@ -254,28 +262,32 @@ export function clientsRoutes() {
       const handleError = async (error: any) => {
         logger().error(error);
         await sendEvent("error", {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-          message: "message" in error ? error.message : error.toString(),
+          message: unknownToString(error),
         });
       };
 
       try {
         const newConnectionData =
-          req.body as entrypoint_schemas.MCPConnectionOptionsCreate;
+          req.body as endpoints_schemas.MCPConnectionOptionsCreate;
 
         // // Ensure visibility is set to a default value if not provided
         // if (!newConnectionData.visibility) {
         //   newConnectionData.visibility = schemas.Visibility.Private;
         // }
 
-        const loggedUser = await userRepository().findById(req.user!.id);
+        if (!authentication_strategy.isUserAuthenticated(req)) {
+          await handleError("Could not resolve the logged user");
+          return;
+        }
+        const user = authentication_strategy.getUserFromSession(req);
+        const loggedUser = await userRepository().findById(user.id);
         if (!loggedUser) {
           await handleError("Could not resolve the logged user");
           return;
         }
 
         // Store in the database
-        const newConnection = await repository().create({
+        const newConnection = await clientRepository().create({
           ...newConnectionData,
           creator: loggedUser.id,
           visibility: schemas.Visibility.Private,
@@ -322,7 +334,7 @@ export function clientsRoutes() {
   router.post(
     "/:id/sendMCPClientRequest",
     validateRequestBody(ClientRequestSchema, logger),
-    authorise([AuthenticationStrategy.Permissions.ClientsWrite]),
+    authorise([authentication_strategy.Permissions.ClientsWrite]),
     async (req: Request, res: Response) => {
       const { id } = req.params;
       const log = logger().child({ id });
@@ -344,18 +356,27 @@ export function clientsRoutes() {
         return;
       }
 
-      const clientDefinition = await repository().findById(id);
+      const clientDefinition = await clientRepository().findById(id);
+      const agentDefinition = await agentRepository().findById(id);
 
-      if (!clientDefinition) {
-        res.status(404).json({ error: "Client not found" }).end();
+      if (!clientDefinition && !agentDefinition) {
+        res
+          .status(404)
+          .json({ error: "Client/Agent definition not found" })
+          .end();
         return;
       }
 
-      const canExecute = await verifyPermission(
-        clientDefinition,
-        req,
-        "execute"
-      );
+      const definition = clientDefinition || agentDefinition;
+      if (!definition) {
+        res
+          .status(500)
+          .json({ error: "Client/Agent definition not found" })
+          .end();
+        return;
+      }
+
+      const canExecute = await verifyPermission(definition, req, "execute");
 
       if (!canExecute) {
         res
@@ -366,6 +387,9 @@ export function clientsRoutes() {
 
       let schema: z.ZodSchema;
       switch (clientRequest.method) {
+        case "tools/list":
+          schema = ListToolsResultSchema;
+          break;
         case "tools/call":
           schema = CompatibilityCallToolResultSchema;
           break;
@@ -402,9 +426,9 @@ export function clientsRoutes() {
   permissionsManagerGenerator({
     router,
     name: "client",
-    repository: repository,
+    repository: clientRepository,
     logger,
-    writePermissions: [AuthenticationStrategy.Permissions.ClientsWrite],
+    writePermissions: [authentication_strategy.Permissions.ClientsWrite],
   });
 
   return router;

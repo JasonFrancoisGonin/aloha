@@ -13,7 +13,7 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { entrypoint_schemas, schemas } from "aloha-shared";
+import { endpoints_schemas, schemas } from "aloha-shared";
 import {
   customFetch,
   safeParseWithErrors,
@@ -36,8 +36,11 @@ export async function getAgentsListByConnectionId(connectionId: string) {
 // Get all agents
 export async function getAgentsList() {
   const response = await customFetch("Get agent list", apiAgentUrl);
-  const data: entrypoint_schemas.AgentListDetail = await response.json();
-  return safeParseWithErrors(data, entrypoint_schemas.AgentListDetailSchema);
+  const data: endpoints_schemas.AgentListDetail[] = await response.json();
+  // return safeParseWithErrors(data, endpoints_schemas.AgentListDetailSchema);
+  return data.map((connection) =>
+    safeParseWithErrors(connection, endpoints_schemas.AgentListDetailSchema)
+  );
 }
 
 // Get agent details by ID
@@ -46,12 +49,12 @@ export async function getAgentDetail(id: string) {
     "Get agent detail",
     `${apiAgentUrl}/${id}`
   );
-  const data: entrypoint_schemas.AgentDetail = await response.json();
-  return safeParseWithErrors(data, entrypoint_schemas.AgentDetailSchema);
+  const data: endpoints_schemas.AgentDetail = await response.json();
+  return safeParseWithErrors(data, endpoints_schemas.AgentDetailSchema);
 }
 
 // Create a new agent
-export async function createAgent(agentData: entrypoint_schemas.AgentCreate) {
+export async function createAgent(agentData: endpoints_schemas.AgentCreate) {
   await customFetch("Create agent", apiAgentUrl, {
     method: "POST",
     body: JSON.stringify(agentData),
@@ -62,7 +65,7 @@ export async function createAgent(agentData: entrypoint_schemas.AgentCreate) {
 // Update agent by ID
 export async function updateAgent(
   id: string,
-  agentData: entrypoint_schemas.AgentCreate
+  agentData: endpoints_schemas.AgentCreate
 ) {
   await customFetch("Update agent", `${apiAgentUrl}/${id}`, {
     method: "POST",
@@ -112,8 +115,8 @@ export async function getAgentToken(agentId: string) {
     "Get the token of an agent",
     `${apiAgentUrl}/${agentId}/_token`
   );
-  const result: entrypoint_schemas.JWTTokenResponse = await response.json();
-  return safeParseWithErrors(result, entrypoint_schemas.JWTTokenResponseSchema);
+  const result: endpoints_schemas.JWTTokenResponse = await response.json();
+  return safeParseWithErrors(result, endpoints_schemas.JWTTokenResponseSchema);
 }
 
 export const setAgentCreator = setCreatorGenerator(apiAgentUrl);

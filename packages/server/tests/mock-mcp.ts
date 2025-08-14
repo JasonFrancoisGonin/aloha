@@ -1,3 +1,18 @@
+/*
+Copyright (C) 2025 European Union
+
+Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the
+European Commission – subsequent versions of the EUPL (the “Licence”);
+You may not use this work except in compliance with the Licence.
+You may obtain a copy of the Licence at:
+* https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12 *
+
+Unless required by applicable law or agreed to in writing, software distributed under
+the Licence is distributed on an “AS IS” basis, WITHOUT WARRANTIES OR CONDITIONS
+OF ANY KIND, either express or implied. See the Licence for the specific language
+governing permissions and limitations under the Licence.
+*/
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
@@ -61,12 +76,12 @@ export function startMockServer(port: number) {
           inputSchema: {
             type: "object",
             properties: {
-              operation: {
+              expression: {
                 type: "string",
-                description: "The arithmetic operation to be performed.",
+                description: "The arithmetic expression to be performed.",
               },
             },
-            required: ["operation"],
+            required: ["expression"],
           },
         },
       ],
@@ -76,10 +91,10 @@ export function startMockServer(port: number) {
   server.setRequestHandler(CallToolRequestSchema, (request) => {
     if (request.params.name === "Calculator") {
       console.log(request.params);
-      const operation = request.params.arguments
-        ? request.params.arguments["operation"]
+      const expression = request.params.arguments
+        ? request.params.arguments["expression"]
         : "1+1";
-      const result = eval(operation as string) as unknown;
+      const result = eval(expression as string) as unknown;
       return {
         content: [
           {
@@ -101,15 +116,15 @@ export function startMockServer(port: number) {
     await server.connect(transport);
   });
   app.post("/message", async (req, res) => {
-    console.log("Received message");
-
     await transport.handlePostMessage(req, res);
   });
 
-  return new Promise<http.Server>((resolve) => {
-    const server = app.listen(port, () => {
-      console.log(`Calculator MCP is running on port ${port}`);
-      resolve(server);
-    });
-  });
+  return new Promise<{ httpServer: http.Server; mcpServer: Server }>(
+    (resolve) => {
+      const httpServer = app.listen(port, () => {
+        console.log(`Calculator MCP is running on port ${port}`);
+        resolve({ httpServer, mcpServer: server });
+      });
+    }
+  );
 }

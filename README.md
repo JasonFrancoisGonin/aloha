@@ -1,14 +1,56 @@
 # ALOHA
 
 Aloha (AI Logical Orchestrator Hub for Agents) is a Hub to manage and
-connect tools with AI Agents.
+interconnect data and AI Agents.
 
 It is built leveraging the [Model Context Protocol](https://modelcontextprotocol.io/).
 
-You can use it to quickly set up MCP servers that relay tools disseminated
-over the net, and to create and connect agents with such servers.
+It allows seamless communication between applications and MCP servers, improving
+tool discoverability and interoperability.
 
-It provides out of the box functionalities to connect and run smart AI agents.
+It also provides out of the box functionalities to test your MCP servers, and to run
+demo agents directly in your browser
+
+[![Homepage](docs/assets/homepage.png)](docs/assets/homepage.png)
+
+## Features
+
+- Easily connect to MCP servers locally and remotely, supporting different kind of authentication strategies
+- Rapidly deploy proxy MCP servers, to easily connect your agent and applications to tools and data sources
+- Test your MCP servers with a built-in MCP client, and run simple agentic loops directly in-browser
+
+### Connect to MCP servers
+
+[![MCP Clients page](docs/assets/MCP_clients.webm)](docs/assets/MCP_clients.webm)
+
+Simply provide the URL of the MCP server, the protocol (ALOHA supports streamingHTTP and the legacy SSE) and the authentication strategy.
+
+Directly from the browser, you can test how the MCP servers respond to different requests, to help debug issues and improve your tools.
+
+ALOHA supports the following:
+
+- Basic authentication
+- Bearer token
+- OAuth2 (coming soon)
+
+It is also easy to add your own authentication strategy, by writing a plugin.
+
+### Deploy proxy MCP servers
+
+[![MCP Servers page](docs/assets/MCP_servers.webm)](docs/assets/MCP_servers.webm)
+
+Write a name and a description, and ALOHA will do the rest. From the user interface, you can decide what MCP servers to expose,
+and your agent or application will only need to connect to a single endpoint and manage a single authentication process.
+
+Requests will be seemingly proxied, and user identity will be propagated accordingly, so you can focus on writing only the code
+that is important.
+
+### Run demo agents
+
+[![MCP Servers page](docs/assets/MCP_agent.webm)](docs/assets/MCP_agent.webm)
+
+ALOHA can leverage any OpenAI compatible endpoint to run agentic loops directly in your browser. By then connecting to MCP servers,
+you can test how they perform when put to work by an agent.
 
 ## Deployment
 
@@ -85,7 +127,7 @@ the `VITE_SERVER_PORT` and `API_URL`.
 On \*nix environment, to use the default configuration run
 
 ```bash
-cp ./packages/client/env.example ./packages/client//.env
+cp ./packages/client/env.example ./packages/client/.env
 ```
 
 The sample configuration is
@@ -111,20 +153,12 @@ Here is an example of such plugin:
 
 ```typescript
 import {
-  AuthenticationStrategy,
-  UserPrincipal,
-} from "aloha-shared/library/AuthenticationStrategy";
+  authentication_strategy,
+} from "aloha-shared";
+
 import { RequestHandler } from "express";
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: UserPrincipal;
-    }
-  }
-}
-
-const myAuthPlugin: AuthenticationStrategy = {
+const myAuthPlugin: authentication_strategy.AuthenticationStrategy = {
   async getAuthenticationMiddleware(): Promise<
     RequestHandler | RequestHandler[]
   > {
@@ -133,16 +167,24 @@ const myAuthPlugin: AuthenticationStrategy = {
       // Your authentication middleware stack
       (req, res, next) => {
         // For example: JWT validation, OAuth handling, etc.
-        req.user = {
+        const user: authentication_strategy.UserPrincipal = {
           id: "123",
-          displayName: "",
+          userId: "userId",
+          displayName: "Jhon Doe",
           permissions: [
             "CLIENTS_READ",
             "CLIENTS_WRITE",
             "SERVERS_READ",
             "SERVERS_WRITE",
           ],
+          provider: "SAMPLE"
         }; // Mock user
+
+        authentication_strategy.storeUserIntoSession(
+          req,
+          user
+        );
+
         next();
       },
     ];

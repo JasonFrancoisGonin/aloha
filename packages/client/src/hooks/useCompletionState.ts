@@ -1,3 +1,18 @@
+/*
+Copyright (C) 2025 European Union
+
+Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the
+European Commission – subsequent versions of the EUPL (the “Licence”);
+You may not use this work except in compliance with the Licence.
+You may obtain a copy of the Licence at:
+* https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12 *
+
+Unless required by applicable law or agreed to in writing, software distributed under
+the Licence is distributed on an “AS IS” basis, WITHOUT WARRANTIES OR CONDITIONS
+OF ANY KIND, either express or implied. See the Licence for the specific language
+governing permissions and limitations under the Licence.
+*/
+
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   ResourceReference,
@@ -12,7 +27,7 @@ interface CompletionState {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function debounce<T extends (...args: any[]) => PromiseLike<void>>(
   func: T,
-  wait: number,
+  wait: number
 ): (...args: Parameters<T>) => void {
   let timeout: ReturnType<typeof setTimeout>;
   return (...args: Parameters<T>) => {
@@ -28,10 +43,10 @@ export function useCompletionState(
     ref: ResourceReference | PromptReference,
     argName: string,
     value: string,
-    signal?: AbortSignal,
+    signal?: AbortSignal
   ) => Promise<string[]>,
   completionsSupported: boolean = true,
-  debounceMs: number = 300,
+  debounceMs: number = 300
 ) {
   const [state, setState] = useState<CompletionState>({
     completions: {},
@@ -65,7 +80,7 @@ export function useCompletionState(
       async (
         ref: ResourceReference | PromptReference,
         argName: string,
-        value: string,
+        value: string
       ) => {
         if (!completionsSupported) {
           return;
@@ -86,7 +101,7 @@ export function useCompletionState(
             ref,
             argName,
             value,
-            abortController.signal,
+            abortController.signal
           );
 
           if (!abortController.signal.aborted) {
@@ -109,7 +124,7 @@ export function useCompletionState(
           }
         }
       },
-      debounceMs,
+      debounceMs
     );
   }, [handleCompletion, completionsSupported, cleanup, debounceMs]);
 

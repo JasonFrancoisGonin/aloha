@@ -14,7 +14,7 @@ governing permissions and limitations under the Licence.
 */
 
 import { getUserInfo } from "@/services/users";
-import { AuthenticationStrategy } from "aloha-shared";
+import { authentication_strategy } from "aloha-shared";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { timer, switchMap, distinctUntilChanged, tap } from "rxjs";
@@ -25,9 +25,8 @@ import { isEqual } from "@react-hookz/deep-equal";
 export default function UserContextProvider({
   children,
 }: React.PropsWithChildren) {
-  const [user, setUser] = useState<AuthenticationStrategy.UserPrincipal | null>(
-    null
-  );
+  const [user, setUser] =
+    useState<authentication_strategy.UserPrincipalWithProjects | null>(null);
 
   useEffect(() => {
     const refreshUser = async () => {
@@ -47,7 +46,7 @@ export default function UserContextProvider({
           return refreshUser();
         }),
         distinctUntilChanged(isEqual),
-        tap((userInfo: AuthenticationStrategy.UserPrincipal) => {
+        tap((userInfo: authentication_strategy.UserPrincipalWithProjects) => {
           console.log("New user info loaded", userInfo);
           setUser(userInfo);
         })

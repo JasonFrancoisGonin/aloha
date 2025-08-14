@@ -26,7 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { DocumentCheckIcon } from "@heroicons/react/16/solid";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AuthenticationStrategy, schemas } from "aloha-shared";
+import { authentication_strategy, schemas } from "aloha-shared";
 import { ReactNode, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -49,7 +49,7 @@ import { Switch } from "@/components/ui/switch";
 import { useService } from "@/hooks/useService";
 
 const ALL_PERMISSION_ENTRIES = Object.entries(
-  AuthenticationStrategy.Permissions
+  authentication_strategy.Permissions
 ).filter(([, value]) => typeof value === "string");
 
 const camelCaseToSpaces = (str: string): string => {

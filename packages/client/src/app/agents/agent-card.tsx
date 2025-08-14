@@ -1,19 +1,35 @@
+/*
+Copyright (C) 2025 European Union
+
+Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the
+European Commission – subsequent versions of the EUPL (the “Licence”);
+You may not use this work except in compliance with the Licence.
+You may obtain a copy of the Licence at:
+* https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12 *
+
+Unless required by applicable law or agreed to in writing, software distributed under
+the Licence is distributed on an “AS IS” basis, WITHOUT WARRANTIES OR CONDITIONS
+OF ANY KIND, either express or implied. See the Licence for the specific language
+governing permissions and limitations under the Licence.
+*/
+
+import { endpoints_schemas } from "aloha-shared";
 import {
   Card,
   CardContent,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "../../components/ui/card";
 import { useNavigate } from "react-router";
+import { WithErrors } from "@/services/utils";
+import { WrenchScrewdriverIcon } from "@heroicons/react/16/solid";
+import { Cable } from "lucide-react";
 
 interface AgentCardProps {
-  agent: {
-    id: string;
-    name: string;
-    description?: string;
-    tags?: string[];
-    isConnected: boolean;
-  };
+  agent:
+    | endpoints_schemas.AgentListDetail
+    | WithErrors<endpoints_schemas.AgentListDetail>;
 }
 
 export function AgentCard({ agent }: AgentCardProps) {
@@ -22,52 +38,46 @@ export function AgentCard({ agent }: AgentCardProps) {
     <Card
       key={agent.id}
       onClick={() => navigate(`/agents/${agent.id}`)}
-      className="w-64"
+      className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl"
     >
-      <CardHeader>
-        <CardTitle>
-          <div className="flex align-middle justify-between">
-            <span>{agent.name}</span>
-            <span
-              className={`mr-2 w-4 h-4 rounded-full inline-block ${agent.isConnected ? "bg-green-600" : "bg-red-500"}`}
-            />
-          </div>
+      <CardHeader className="pb-4">
+        <CardTitle className="flex justify-between items-center">
+          <span className="text-lg font-semibold text-gray-900 truncate">
+            {agent.name}
+          </span>
+          <span
+            className={`w-3 h-3 rounded-full ${agent.isConnected ? "bg-green-500" : "bg-red-500"} ring-2 ${agent.isConnected ? "ring-green-200" : "ring-red-200"}`}
+            title={agent.isConnected ? "Connected" : "Disconnected"}
+          ></span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="grow text-sm">
+      <CardContent className="text-sm text-gray-600 mb-4">
         {"isError" in agent && (
-          <p className="text-red-700 font-bold mb-2">
-            There is an error with this agent
+          <p className="text-red-600 font-medium mb-2">
+            Error: Connection issue
           </p>
         )}
-        {agent.description}
+        <p className="line-clamp-3">
+          {agent.description || "No description provided"}
+        </p>
       </CardContent>
-      {/* <CardFooter>
-              <div>
-                {c.isConnected ? (
-                  <div className="flex">
-                    <DocumentDuplicateIcon width={16} className="mr-1" />
-                    {c.resources}
-                    <ClipboardDocumentListIcon
-                      width={16}
-                      className="mr-1 ml-2"
-                    />
-                    {c.resourceTemplates}
-                    <ChatBubbleOvalLeftEllipsisIcon
-                      width={16}
-                      className="mr-1 ml-2"
-                    />
-                    {c.prompts}
-                    <WrenchScrewdriverIcon width={16} className="mr-1 ml-2" />
-                    {c.tools}
-                  </div>
-                ) : (
-                  <span className="text-sm opacity-70 italic">
-                    Server is offline
-                  </span>
-                )}
-              </div>
-            </CardFooter> */}
+      <CardFooter className="border-t border-gray-100 pt-4">
+        {agent.isConnected ? (
+          <div className="flex items-center justify-between w-full text-sm">
+            <div className="flex items-center space-x-3">
+              <WrenchScrewdriverIcon className="w-4 h-4 mr-1" />
+              <span>{agent.tools || 0}</span>
+              <Cable className="w-4 h-4 mr-1" size={16} />
+              <span>{agent.connections?.length || 0}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="text-sm text-red-600 flex items-center">
+            <span className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></span>
+            Server offline
+          </div>
+        )}
+      </CardFooter>
     </Card>
   );
 }

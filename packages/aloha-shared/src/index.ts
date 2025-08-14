@@ -13,7 +13,7 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-export * as AuthenticationStrategy from "./AuthenticationStrategy.js";
-export * as entrypoint_schemas from "./entrypoint_schemas.js";
+export * as authentication_strategy from "./authentication-strategy.js";
+export * as endpoints_schemas from "./endpoints-schemas.js";
 export * as schemas from "./schemas.js";
 export * as logger from "./logger.js";

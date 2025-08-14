@@ -1,17 +1,15 @@
 {
   "name": "aloha",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "AI Logical Orchestrator Hub for Agents",
   "private": true,
   "devDependencies": {
     "@fsouza/prettierd": "^0.26.1",
-    "@types/express-serve-static-core": "^5.0.6",
-    "@types/node": "^22.13.0",
-    "lerna": "^8.1.9",
-    "prettier": "^3.5.3",
-    "prettier-plugin-organize-imports": "^4.1.0",
-    "prettier-plugin-tailwindcss": "^0.6.11",
-    "typescript": "^5.8.2"
+    "@types/node": "^22.17.1",
+    "lerna": "^8.2.3",
+    "prettier": "^3.6.2",
+    "prettier-plugin-organize-imports": "^4.2.0",
+    "typescript": "^5.9.2"
   },
   "dependencies": {
     "sse.js": "^2.6.0"

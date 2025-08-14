@@ -16,9 +16,9 @@ governing permissions and limitations under the Licence.
 // const fetchCache = () => injector.resolve("fetchCache");
 
 import {
-  AuthenticationStrategy,
-  entrypoint_schemas,
-  // entrypoint_schemas,
+  authentication_strategy,
+  endpoints_schemas,
+  // endpoints_schemas,
   schemas,
 } from "aloha-shared";
 import {
@@ -29,7 +29,6 @@ import {
 } from "./utils";
 import { getLogger } from "../injector/provide-logger";
 import { injector } from "../injector/injector";
-// import { z } from "zod";
 import { authorise } from "../middleware/authorise";
 import { stringComparer } from "../utils/sort-comparators";
 import { Request, Response } from "express";
@@ -42,19 +41,21 @@ import { z } from "zod";
 
 const logger = getLogger("AGENT");
 
-const agentRepository = () => injector.resolve("agentRepository");
-const mcpManager = () => injector.resolve("mcpManager");
-const fetchCache = () => injector.resolve("fetchCache");
-const userRepository = () => injector.resolve("userRepository");
+const agentRepository = () => injector().resolve("agentRepository");
+const mcpManager = () => injector().resolve("mcpManager");
+const fetchCache = () => injector().resolve("fetchCache");
+const userRepository = () => injector().resolve("userRepository");
 
 export function agentRoutes() {
+  logger().info("Registering agents router");
+
   const router = crudGenerator<schemas.Agent>({
     name: "agent",
     logger: logger,
     repository: agentRepository,
     schema: schemas.AgentSchema,
-    readPermissions: [AuthenticationStrategy.Permissions.AgentsRead],
-    writePermissions: [AuthenticationStrategy.Permissions.AgentsWrite],
+    readPermissions: [authentication_strategy.Permissions.AgentsRead],
+    writePermissions: [authentication_strategy.Permissions.AgentsWrite],
     endpoints: {
       list: {
         enableCache: false,
@@ -71,7 +72,7 @@ export function agentRoutes() {
 
           permitted.sort(stringComparer("name"));
 
-          const detailedAgents: entrypoint_schemas.AgentListDetail =
+          const detailedAgents: endpoints_schemas.AgentListDetail[] =
             permitted.map(({ id, ...agentOptions }) => {
               const client = mcpManager().getConnection(id);
               const server = mcpManager().getServer(id);
@@ -79,6 +80,7 @@ export function agentRoutes() {
                 ...agentOptions,
                 id: id,
                 isConnected: !!client && client.isConnected && !!server,
+                tools: client?.tools.length || 0,
               };
             });
 
@@ -112,6 +114,7 @@ export function agentRoutes() {
                   id: sc,
                   name: connection?.connectionOptions.name,
                   isConnected: connection?.isConnected,
+                  type: connection.connectionOptions.type,
                 };
               })
               .filter((sc) => sc !== null),
@@ -136,7 +139,12 @@ export function agentRoutes() {
         const visibility = agentData.visibility ?? schemas.Visibility.Private;
 
         // Ensure that the creator is set to the user requesting the creation
-        const loggedUser = await userRepository().findById(req.user!.id);
+        // if (!authentication_strategy.isUserAuthenticated(req)) {
+        //   throw new HTTPError(500, "Could not resolve the logged user");
+        // }
+
+        const user = authentication_strategy.getUserFromSession(req);
+        const loggedUser = await userRepository().findById(user.id);
         if (!loggedUser) {
           throw new HTTPError(500, "Could not resolve the logged user");
         }
@@ -190,13 +198,14 @@ export function agentRoutes() {
 
         // If the server does not have a creator, set it now
         let creator = newAgentOptions.creator;
+        const user = authentication_strategy.getUserFromSession(req);
         if (
           !creator &&
-          req.user?.permissions.includes(
-            AuthenticationStrategy.Permissions.Administration
+          user?.permissions.includes(
+            authentication_strategy.Permissions.Administration
           )
         ) {
-          const loggedUser = await userRepository().findById(req.user.id);
+          const loggedUser = await userRepository().findById(user.id);
           if (!loggedUser) {
             throw new HTTPError(500, "Could not resolve the logged user");
           }
@@ -238,7 +247,7 @@ export function agentRoutes() {
 
   router.get(
     "/:id/_token",
-    authorise([AuthenticationStrategy.Permissions.AgentsWrite]),
+    authorise([authentication_strategy.Permissions.AgentsWrite]),
     async (req: Request, res: Response) => {
       const { id } = req.params;
       const log = logger().child({ agentId: id });
@@ -258,10 +267,13 @@ export function agentRoutes() {
           res.status(404).json({ error: "Creator user not found" });
           return;
         }
-        if (
-          req.user?.id !== creatorUser.id &&
-          req.user?.id !== creatorUser.userId
-        ) {
+
+        // if (!authentication_strategy.isUserAuthenticated(req)) {
+        //   throw new HTTPError(500, "Could not resolve the logged user");
+        // }
+        const user = authentication_strategy.getUserFromSession(req);
+
+        if (user.id !== creatorUser.id && user.id !== creatorUser.userId) {
           res.status(403).json({
             error:
               "Only the creator of an agent can issue tokens for the agent",
@@ -269,7 +281,7 @@ export function agentRoutes() {
           return;
         }
 
-        const tokenRepository = () => injector.resolve("tokenRepository");
+        const tokenRepository = () => injector().resolve("tokenRepository");
         // Delete all existing tokens for this agent
         const existing = await tokenRepository().findByPattern({
           userId: agent.id,
@@ -281,7 +293,7 @@ export function agentRoutes() {
         // Create token without project association for agents
         const newToken = await tokenRepository().create({
           userId: agent.id,
-          permissions: [AuthenticationStrategy.Permissions.ProxyApiAccess],
+          permissions: [authentication_strategy.Permissions.ProxyApiAccess],
           expirationDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
           projectId: AGENT_PROJECT,
           disabled: false,
@@ -302,7 +314,7 @@ export function agentRoutes() {
   // Associate a client to a server
   router.post(
     "/:id/_connect/:cid",
-    authorise([AuthenticationStrategy.Permissions.AgentsWrite]),
+    authorise([authentication_strategy.Permissions.AgentsWrite]),
     async (req: Request, res: Response) => {
       // assertFieldInObject(req.params, "id", z.string());
       // assertFieldInObject(req.params, "cid", z.string());
@@ -332,7 +344,7 @@ export function agentRoutes() {
 
         await verifyPermission(server.options, req, "write", true);
 
-        const connectionOption = await injector
+        const connectionOption = await injector()
           .resolve("connectionOptionsRepository")
           .findById(cid);
 
@@ -379,7 +391,7 @@ export function agentRoutes() {
   // Dissociate a client to a server
   router.post(
     "/:id/_disconnect/:cid",
-    authorise([AuthenticationStrategy.Permissions.AgentsWrite]),
+    authorise([authentication_strategy.Permissions.AgentsWrite]),
     async (req: Request, res: Response) => {
       // assertFieldInObject(req.params, "id", z.string());
       // assertFieldInObject(req.params, "cid", z.string());
@@ -440,7 +452,7 @@ export function agentRoutes() {
 
   router.get(
     "/by_connection_id/:cid",
-    authorise([AuthenticationStrategy.Permissions.ServersRead]),
+    authorise([authentication_strategy.Permissions.ServersRead]),
     async (req: Request, res: Response) => {
       // assertFieldInObject(req.params, "cid", z.string());
       const { cid } = req.params;
@@ -471,7 +483,7 @@ export function agentRoutes() {
     name: "agents",
     repository: agentRepository,
     logger,
-    writePermissions: [AuthenticationStrategy.Permissions.ServersWrite],
+    writePermissions: [authentication_strategy.Permissions.ServersWrite],
   });
 
   return router;

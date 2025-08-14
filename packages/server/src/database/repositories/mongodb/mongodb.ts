@@ -49,3 +49,7 @@ export function getDatabase(): Db {
 
   return db;
 }
+
+export function getClient(): MongoClient {
+  return client;
+}

@@ -13,9 +13,10 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { AuthenticationStrategy } from "aloha-shared";
+import { authentication_strategy } from "aloha-shared";
 import { NextFunction, Request, RequestHandler, Response } from "express";
 import { getLogger } from "../injector/provide-logger";
+import { injector } from "../injector/injector";
 
 export const NO_AUTHENTICATION_USER_ID = "NOAUTH_user";
 
@@ -23,9 +24,30 @@ const logger = getLogger("NO-AUTH-MIDDLEWARE");
 
 const PROVIDER_NAME = "NO-AUTH";
 
-const noAuthenticationStrategy: AuthenticationStrategy.AuthenticationStrategy =
+const userRepository = () => injector().resolve("userRepository");
+
+let notAuthenticatedUserId: string | undefined = undefined;
+
+const noAuthenticationStrategy: authentication_strategy.AuthenticationStrategy =
   {
-    async init() {},
+    async init() {
+      const user = await userRepository().findByUserId(
+        NO_AUTHENTICATION_USER_ID
+      );
+      if (!user) {
+        const inserted = await userRepository().create({
+          userId: NO_AUTHENTICATION_USER_ID,
+          fullName: "Developer",
+          permissions: Object.values(authentication_strategy.Permissions),
+        });
+
+        logger().info("Created default user for no-authentication strategy");
+        notAuthenticatedUserId = inserted.id;
+      } else {
+        logger().info("Default user for no-authentication strategy exists");
+        notAuthenticatedUserId = user.id;
+      }
+    },
 
     // eslint-disable-next-line @typescript-eslint/require-await
     async getAuthenticationMiddleware(): Promise<
@@ -34,16 +56,8 @@ const noAuthenticationStrategy: AuthenticationStrategy.AuthenticationStrategy =
       logger().info(
         "Server is starting without authentication. Use it only in development environment."
       );
+
       return (req, res, next) => {
-        if (!req.user) {
-          req.user = {
-            id: NO_AUTHENTICATION_USER_ID,
-            userId: NO_AUTHENTICATION_USER_ID,
-            displayName: "Developer",
-            permissions: Object.values(AuthenticationStrategy.Permissions),
-            provider: PROVIDER_NAME,
-          };
-        }
         next();
       };
     },
@@ -55,8 +69,35 @@ const noAuthenticationStrategy: AuthenticationStrategy.AuthenticationStrategy =
 
     // eslint-disable-next-line @typescript-eslint/require-await
     async login() {
-      return (_req: Request, _res: Response, next: NextFunction) => {
-        next();
+      return (req: Request, res: Response) => {
+        const storeUserSession = () => {
+          if (!notAuthenticatedUserId) {
+            res
+              .status(500)
+              .send("No authentication user not present in the database");
+            return;
+          }
+          authentication_strategy.storeUserIntoSession(req, {
+            id: notAuthenticatedUserId,
+            userId: NO_AUTHENTICATION_USER_ID,
+            displayName: "Developer",
+            permissions: Object.values(authentication_strategy.Permissions),
+            provider: PROVIDER_NAME,
+          });
+        };
+        if (authentication_strategy.isUserAuthenticated(req)) {
+          authentication_strategy.clearSession(req, (err) => {
+            if (err) {
+              logger().error("Error clearing session", err);
+            }
+            storeUserSession();
+
+            res.redirect("/");
+          });
+        } else {
+          storeUserSession();
+          res.redirect("/");
+        }
       };
     },
 

@@ -13,7 +13,7 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { AuthenticationStrategy, logger, schemas } from "aloha-shared";
+import { authentication_strategy, logger, schemas } from "aloha-shared";
 import express, { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
 import { CrudRepository } from "../database/repositories/interfaces/repository-interfaces";
@@ -21,8 +21,8 @@ import { VisibilityRepositoryInterface } from "../database/repositories/interfac
 import { injector } from "../injector/injector";
 import { authorise } from "../middleware/authorise";
 
-const fetchCache = () => injector.resolve("fetchCache");
-const userProjectsCache = () => injector.resolve("userProjectsCache");
+const fetchCache = () => injector().resolve("fetchCache");
+const userProjectsCache = () => injector().resolve("userProjectsCache");
 
 type PermissionType = "read" | "write" | "execute";
 
@@ -57,8 +57,8 @@ type Options<T extends object> = {
   repository: () => CrudRepository<T>;
   schema: z.ZodSchema<T>;
   logger: () => logger.Logger;
-  readPermissions?: AuthenticationStrategy.Permissions[];
-  writePermissions?: AuthenticationStrategy.Permissions[];
+  readPermissions?: authentication_strategy.Permissions[];
+  writePermissions?: authentication_strategy.Permissions[];
   endpoints: Partial<EndpointList<T>>;
 };
 type PermissionsOptions<T extends schemas.VisibilityInterface> = {
@@ -66,7 +66,7 @@ type PermissionsOptions<T extends schemas.VisibilityInterface> = {
   name: string;
   repository: () => VisibilityRepositoryInterface<T>;
   logger: () => logger.Logger;
-  writePermissions?: AuthenticationStrategy.Permissions[];
+  writePermissions?: authentication_strategy.Permissions[];
 };
 
 export const validateRequestBody =
@@ -91,7 +91,7 @@ export const validateRequestBody =
         }
         // logger().info(`instanceOfVisibility: ${instanceOfVisibility}`);
         if (instanceOfVisibility) {
-          if (!req.user?.id) {
+          if (!authentication_strategy.isUserAuthenticated(req)) {
             res.status(401).json({ error: "Not authorised" });
             return;
           }
@@ -102,18 +102,33 @@ export const validateRequestBody =
           // Inject default values for creator and visibility
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           const creator = req.body?.creator as string;
+          // if (!authentication_strategy.isUserAuthenticated(req)) {
+          //   throw new HTTPError(500, "Could not resolve the logged user");
+          // }
+          let user = authentication_strategy.getUserFromSession(req);
+          // Check if there's a temporary user (for NO-AUTH users)
+          // if ((req as any).temporaryUser) {
+          //   user = (req as any).temporaryUser;
+          // }
+
           if (
             !creator &&
-            req.user?.permissions.includes(
-              AuthenticationStrategy.Permissions.Administration
+            user.permissions.includes(
+              authentication_strategy.Permissions.Administration
             )
           ) {
-            const loggedUser = await userRepository().findById(req.user.id);
-            if (!loggedUser) {
-              throw new HTTPError(500, "Could not resolve the logged user");
+            // For NO-AUTH users with temporary ID, we don't need to look up in DB
+            if (user.provider === "NO-AUTH") {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+              req.body.creator = user.id;
+            } else {
+              const loggedUser = await userRepository().findById(user.id);
+              if (!loggedUser) {
+                throw new HTTPError(500, "Could not resolve the logged user");
+              }
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+              req.body.creator = loggedUser.id;
             }
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            req.body.creator = loggedUser.id;
           }
           if (!("visibility" in req.body))
             // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -132,8 +147,8 @@ export const validateRequestBody =
     }
   };
 
-const userRepository = () => injector.resolve("userRepository");
-const usersCache = () => injector.resolve("usersCache");
+const userRepository = () => injector().resolve("userRepository");
+const usersCache = () => injector().resolve("usersCache");
 
 // const agentRepository = () => injector.resolve("agentRepository");
 // const agentsCache = () => injector.resolve("agentsCache");
@@ -147,13 +162,14 @@ export const verifyPermission = async (
   if (obj.visibility == schemas.Visibility.Public && permission == "read")
     return true;
 
-  if (!req.user) {
+  if (!authentication_strategy.isUserAuthenticated(req)) {
     if (raiseException) throw new HTTPError(401, "Not authenticated");
     return false;
   }
 
-  const user = await usersCache().get(req.user.id, async () => {
-    return await userRepository().findById(req.user!.id);
+  const userFromSession = authentication_strategy.getUserFromSession(req);
+  const user = await usersCache().get(userFromSession.id, async () => {
+    return await userRepository().findById(userFromSession.id);
   });
 
   if (!user) {
@@ -164,18 +180,22 @@ export const verifyPermission = async (
   // Creators always have permissions on their objects
   if (obj.creator == user.id) return true;
 
+  // Public objects can be executed by anyone provided they are logged in
+  if (obj.visibility == schemas.Visibility.Public && permission == "execute")
+    return true;
+
   // Administrators always have READ permissions on all objects
   const askReadAndUserIsAdmin =
     permission == "read" &&
     user.permissions.includes(
-      AuthenticationStrategy.Permissions.Administration
+      authentication_strategy.Permissions.Administration
     );
 
   // Administrators always have full permission on orphaned objects
   const objectIsOphanAndUserIsAdmin =
     (obj.creator === undefined || obj.creator === null) &&
     user.permissions.includes(
-      AuthenticationStrategy.Permissions.Administration
+      authentication_strategy.Permissions.Administration
     );
 
   if (askReadAndUserIsAdmin || objectIsOphanAndUserIsAdmin) return true;
@@ -241,7 +261,9 @@ function getCacheForOption(
   options: EndpointOptionArray<unknown> | EndpointOption<unknown> | undefined
 ) {
   if (typeof options === "object" && "enableCache" in options) {
-    return options.enableCache ? fetchCache() : injector.resolve("emptyCache");
+    return options.enableCache
+      ? fetchCache()
+      : injector().resolve("emptyCache");
   } else {
     return fetchCache();
   }
@@ -368,7 +390,7 @@ export function crudGenerator<T extends object>({
 
           const updated = await updateFactory(req);
           if (updated) {
-            getCacheForOption(endpoints.get).clear();
+            getCacheForOption(endpoints.update).clear();
             res.status(204).end();
           } else {
             res.status(404).json({ error: `${name} not found` });
@@ -434,7 +456,7 @@ export function permissionsManagerGenerator<
 }: PermissionsOptions<T>) {
   router.post(
     "/:id/_setCreator",
-    authorise([AuthenticationStrategy.Permissions.Administration]),
+    authorise([authentication_strategy.Permissions.Administration]),
     validateRequestBody(
       z.object({ creator: z.string().min(1, "Creator is required") }).strict(),
       logger

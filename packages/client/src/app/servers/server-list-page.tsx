@@ -1,0 +1,187 @@
+/*
+Copyright (C) 2025 European Union
+ 
+Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the
+European Commission – subsequent versions of the EUPL (the “Licence”);
+You may not use this work except in compliance with the Licence.
+You may obtain a copy of the Licence at:
+* https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12 *
+
+Unless required by applicable law or agreed to in writing, software distributed under
+the Licence is distributed on an “AS IS” basis, WITHOUT WARRANTIES OR CONDITIONS
+OF ANY KIND, either express or implied. See the Licence for the specific language
+governing permissions and limitations under the Licence.
+*/
+
+import PageTitle from "@/components/page-title";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { DocumentPlusIcon } from "@heroicons/react/16/solid";
+import { schemas } from "aloha-shared";
+import { useCallback, useState } from "react";
+import { useNavigate } from "react-router";
+import { useService } from "../../hooks/useService";
+import { getServersList } from "../../services/servers";
+import MCPServerEditDialog from "./server-edit-dialog";
+import { WithErrors } from "@/services/utils";
+import Loading from "@/components/loading";
+import { Cable } from "lucide-react";
+
+const PING_TIMEOUT = 3000;
+
+export default function MCPServersListPage() {
+  const [isLoading, servers, , reloadServer] = useService<
+    (
+      | schemas.MCPServerOptionsWithId
+      | WithErrors<schemas.MCPServerOptionsWithId>
+    )[]
+  >(getServersList, [], [], [], PING_TIMEOUT);
+
+  const [filter, setFilter] = useState<string>("");
+
+  const navigate = useNavigate();
+
+  const filterConnections = useCallback(
+    (
+      c:
+        | schemas.MCPServerOptionsWithId
+        | WithErrors<schemas.MCPServerOptionsWithId>
+    ) => {
+      if (filter.length < 3) return true;
+      if ("isError" in c) return true;
+      return filter
+        .toLowerCase()
+        .split(" ")
+        .map(
+          (f) =>
+            c.name.toLowerCase().includes(f) ||
+            !!c.description?.toLowerCase().includes(f) ||
+            !!c.tags?.some((t) => t.toLowerCase().includes(f))
+        )
+        .some((f) => f);
+    },
+    [filter]
+  );
+
+  return (
+    <div className="max-w-8xl mx-auto">
+      {/* Page Header */}
+      <div className="mb-8">
+        <div className="flex justify-between items-center mb-6">
+          <PageTitle className="text-2xl font-bold text-gray-900">
+            MCP Servers
+          </PageTitle>
+          <MCPServerEditDialog
+            serverId={undefined}
+            trigger={
+              <Button>
+                <DocumentPlusIcon />
+                New Server
+              </Button>
+            }
+            onAccept={async () => reloadServer()}
+          />
+        </div>
+
+        {/* Search and Filter */}
+        <Input
+          type="search"
+          className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="Search servers by name, description, or tags..."
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+      </div>
+      {isLoading && <Loading message="Loading servers..."></Loading>}
+      {/* Server Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {!isLoading &&
+          servers.filter(filterConnections).map((server) => (
+            <Card
+              key={server.id}
+              onClick={() => navigate(`/servers/${server.id}`)}
+              className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl"
+            >
+              <CardHeader className="pb-4">
+                <CardTitle className="flex justify-between items-center">
+                  <span className="text-lg font-semibold text-gray-900 truncate">
+                    {server.name}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-gray-600 mb-4">
+                {"isError" in server && (
+                  <p className="text-red-600 font-medium mb-2">
+                    Error: Server issue
+                  </p>
+                )}
+                <p className="line-clamp-3">
+                  {server.description || "No description provided"}
+                </p>
+              </CardContent>
+              <CardFooter className="border-t border-gray-100 pt-4">
+                <div className="flex items-center justify-between w-full text-sm">
+                  <div className="flex items-center space-x-3">
+                    {server.connections && server.connections.length ? (
+                      <p className="flex items-center font-bold">
+                        <Cable className="w-4 h-4 mr-1" size={16} />
+                        {server.connections.length}
+                      </p>
+                    ) : (
+                      <p className="italic">No clients</p>
+                    )}
+                  </div>
+                </div>
+              </CardFooter>
+            </Card>
+          ))}
+      </div>
+
+      {/* Empty State */}
+      {!isLoading && servers.filter(filterConnections).length === 0 && (
+        <div className="text-center py-16 bg-gray-50 rounded-xl">
+          <div className="inline-block p-4 bg-white rounded-full shadow-md mb-4">
+            <svg
+              className="w-12 h-12 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
+            </svg>
+          </div>
+          <h3 className="text-xl font-medium text-gray-900 mb-2">
+            No servers found
+          </h3>
+          <p className="text-gray-500 mb-6">
+            {filter
+              ? "No servers match your search criteria"
+              : "There are no servers available at the moment"}
+          </p>
+          <MCPServerEditDialog
+            serverId={undefined}
+            trigger={
+              <Button>
+                <DocumentPlusIcon />
+                New Server
+              </Button>
+            }
+            onAccept={async () => reloadServer()}
+          />
+        </div>
+      )}
+    </div>
+  );
+}

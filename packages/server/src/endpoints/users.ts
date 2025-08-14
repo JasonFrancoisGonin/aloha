@@ -13,27 +13,28 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { AuthenticationStrategy, schemas } from "aloha-shared";
-import { ANONYMOUS_USER } from "../../../aloha-shared/dist/AuthenticationStrategy";
+import { authentication_strategy, schemas } from "aloha-shared";
 import { injector } from "../injector/injector";
 import { getLogger } from "../injector/provide-logger";
 import { crudGenerator, HTTPError } from "./utils";
 import { assertFieldInObject } from "../utils/type-utils";
 import z from "zod";
 
-const fetchCache = () => injector.resolve("fetchCache");
+const fetchCache = () => injector().resolve("fetchCache");
 
 const logger = getLogger("USERS");
 
-const userRepository = () => injector.resolve("userRepository");
+const userRepository = () => injector().resolve("userRepository");
 const connectionOptionsRepository = () =>
-  injector.resolve("connectionOptionsRepository");
+  injector().resolve("connectionOptionsRepository");
 const serverOptionsRepository = () =>
-  injector.resolve("serverOptionsRepository");
+  injector().resolve("serverOptionsRepository");
 
 export function usersRoutes() {
+  logger().info("Registering users router");
+
   const checkUserName = async (userId: string, databaseId?: string) => {
-    if (userId == ANONYMOUS_USER) {
+    if (userId == authentication_strategy.ANONYMOUS_USER) {
       throw new HTTPError(502, "User id cannot be a reserved word");
     }
     const alreadyExisting = await userRepository().findByPattern({
@@ -57,8 +58,8 @@ export function usersRoutes() {
     logger: logger,
     repository: userRepository,
     schema: schemas.UserSchema,
-    readPermissions: [AuthenticationStrategy.Permissions.UsersRead],
-    writePermissions: [AuthenticationStrategy.Permissions.UsersWrite],
+    readPermissions: [authentication_strategy.Permissions.UsersRead],
+    writePermissions: [authentication_strategy.Permissions.UsersWrite],
     endpoints: {
       list: true,
       get: true,

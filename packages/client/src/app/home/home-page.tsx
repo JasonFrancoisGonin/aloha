@@ -14,26 +14,29 @@ governing permissions and limitations under the Licence.
 */
 
 import ConfirmDialog from "@/components/confirm-dialog";
+import Loading from "@/components/loading";
 import PageTitle from "@/components/page-title";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+
 import { usePermissionChecker } from "@/hooks/use-permission-checker";
-import { getHubStatus, restartHub } from "@/services/mcp-hub";
+import { getHubStatus, restartHub } from "@/services/hub";
 import { isWithErrorsObject } from "@/services/utils";
 import { exceptionToMessage } from "@/utils/type-utils";
 import { ArrowPathIcon } from "@heroicons/react/24/solid";
-import { entrypoint_schemas } from "aloha-shared";
+import { Separator } from "@/components/ui/separator";
+import { endpoints_schemas } from "aloha-shared";
 import { formatDistanceToNow } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import { exhaustMap, merge, Subject, tap, timer } from "rxjs";
 import { toast } from "sonner";
-
 const forceGetStatus = new Subject<boolean>();
 
 export default function HomePage() {
+  const navigate = useNavigate();
   const [hubStatus, setHubStatus] =
-    useState<entrypoint_schemas.HubStatus | null>(null);
+    useState<endpoints_schemas.HubStatus | null>(null);
 
   useEffect(() => {
     const subscription = merge(forceGetStatus, timer(0, 5_000))
@@ -50,8 +53,6 @@ export default function HomePage() {
             return null;
           }
         }),
-
-        // distinctUntilChanged(isEqual),
 
         tap((status) => {
           setHubStatus(status);
@@ -79,81 +80,104 @@ export default function HomePage() {
     return permissionChecker.isAdministrator();
   }, [permissionChecker]);
 
-  if (!hubStatus) {
-    return (
-      <>
-        <PageTitle>Aloha!</PageTitle>
-        <Label>Loading ... </Label>
-      </>
-    );
-  }
-
   return (
-    <>
-      <div className="flex justify-between items-center mb-4">
-        <PageTitle>Aloha!</PageTitle>
-        {isAdministrator && (
-          <ConfirmDialog
-            message="Do you want to restart the HUB? This action will close all currennt active connections."
-            onClick={() => {
-              return doRestartManager();
-            }}
-          >
-            <Button className="mr-2" variant="destructive">
-              <ArrowPathIcon />
-              Restart Hub
-            </Button>
-          </ConfirmDialog>
-        )}
+    <div className="">
+      <div className="text mb-8">
+        <div className="flex items-center justify-between mb-2">
+          <PageTitle className="text-4xl font-bold text-foreground">
+            Aloha!
+          </PageTitle>
+          {isAdministrator && (
+            <ConfirmDialog
+              message="Do you want to restart the HUB? This action will close all current active connections."
+              onClick={() => {
+                return doRestartManager();
+              }}
+            >
+              <Button>
+                <ArrowPathIcon className="w-5 h-5" />
+                <span className="font-medium">Restart Hub</span>
+              </Button>
+            </ConfirmDialog>
+          )}
+        </div>
+        <p className="text-xl mb-6">
+          Welcome to the AI Logical Orchestrator Hub for Agents
+        </p>
       </div>
-      {/* <h1 className="text-3xl font-bold mb-4">Aloha!</h1> */}
-      <p className="mb-2">
-        Welcome to the AI Logical Orchestrator Hub for Agents.
-      </p>
-      <p className="mb-2">
-        The Hub is{" "}
-        {hubStatus.manager.startDate !== null ? (
-          <>
-            <span className="text-green-700 font-bold">online</span> since{" "}
-            {formatDistanceToNow(hubStatus.manager.startDate)}
-          </>
-        ) : (
-          <span className="text-red-700 font-bold">offline</span>
-        )}
-        .
-      </p>
-      <div className="flex gap-2 flex-wrap">
-        <div className="w-64">
-          <Card>
-            <CardContent className="text-center">
-              <span className="text-6xl">{hubStatus.clients.online}</span>
-            </CardContent>
-            <CardFooter>
-              <div className="text-center w-full">MCP Clients online</div>
-            </CardFooter>
-          </Card>
-        </div>
-        <div className="w-64">
-          <Card>
-            <CardContent className="text-center">
-              <span className="text-6xl">{hubStatus.agents.online}</span>
-            </CardContent>
-            <CardFooter>
-              <div className="text-center w-full">Agents online</div>
-            </CardFooter>
-          </Card>
-        </div>
-        <div className="w-64">
-          <Card>
-            <CardContent className="text-center">
-              <span className="text-6xl">{hubStatus.servers.total}</span>
-            </CardContent>
-            <CardFooter>
-              <div className="text-center w-full">MCP Servers</div>
-            </CardFooter>
-          </Card>
-        </div>
-      </div>
-    </>
+
+      {!hubStatus ? (
+        <Loading message="Checking the status of the hub..." />
+      ) : (
+        <>
+          <div className="flex items-center mb-4">
+            <span className="mr-2">Hub Status:</span>
+            {hubStatus.manager.startDate !== null ? (
+              <span className="text-green-600 font-semibold">
+                Online since {formatDistanceToNow(hubStatus.manager.startDate)}
+              </span>
+            ) : (
+              <span className="text-red-600 font-semibold">Offline</span>
+            )}
+          </div>
+
+          <Separator className="my-8" />
+
+          <div className="flex flex-wrap justify-center gap-4 my-8">
+            <div className="w-64">
+              <Card
+                className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl"
+                onClick={() => navigate("/clients")}
+              >
+                <CardContent className="flex flex-col items-center justify-center flex-1 p-6">
+                  <div className="text-6xl font-bold text-foreground mb-2">
+                    {hubStatus.clients.online}
+                  </div>
+                </CardContent>
+                <CardFooter className="pt-0 pb-4">
+                  <p className="text-center w-full text-sm font-medium text-muted-foreground">
+                    MCP Clients Online
+                  </p>
+                </CardFooter>
+              </Card>
+            </div>
+            <div className="w-64">
+              <Card
+                className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl"
+                onClick={() => navigate("/agents")}
+              >
+                <CardContent className="flex flex-col items-center justify-center flex-1 p-6">
+                  <div className="text-6xl font-bold text-foreground mb-2">
+                    {hubStatus.agents.online}
+                  </div>
+                </CardContent>
+                <CardFooter className="pt-0 pb-4">
+                  <p className="text-center w-full text-sm font-medium text-muted-foreground">
+                    Agents Online
+                  </p>
+                </CardFooter>
+              </Card>
+            </div>
+            <div className="w-64">
+              <Card
+                className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl"
+                onClick={() => navigate("/servers")}
+              >
+                <CardContent className="flex flex-col items-center justify-center flex-1 p-6">
+                  <div className="text-6xl font-bold text-foreground mb-2">
+                    {hubStatus.servers.total}
+                  </div>
+                </CardContent>
+                <CardFooter className="pt-0 pb-4">
+                  <p className="text-center w-full text-sm font-medium text-muted-foreground">
+                    Servers
+                  </p>
+                </CardFooter>
+              </Card>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

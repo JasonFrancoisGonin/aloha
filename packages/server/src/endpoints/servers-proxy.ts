@@ -13,21 +13,26 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { AuthenticationStrategy } from "aloha-shared";
+import { authentication_strategy } from "aloha-shared";
 import express, { NextFunction, Request, Response } from "express";
 import { injector } from "../injector/injector";
 import { getLogger } from "../injector/provide-logger";
 import { authorise } from "../middleware/authorise";
 import { HTTPError, verifyPermission } from "./utils";
 import { AGENT_PROJECT } from "../middleware/jwt-authentication";
+import { assertFieldInObject } from "../utils/type-utils";
+
+import z from "zod";
 
 const logger = getLogger("SERVERS-PROXY");
-const mcpManager = () => injector.resolve("mcpManager");
-const agentRepository = () => injector.resolve("agentRepository");
-const agentCache = () => injector.resolve("agentsCache");
+const mcpManager = () => injector().resolve("mcpManager");
+const agentRepository = () => injector().resolve("agentRepository");
+const agentCache = () => injector().resolve("agentsCache");
 
 export function serverProxyRoutes() {
   const router = express.Router();
+
+  logger().info("Registering servers proxy router");
 
   const getServer = async (
     req: Request,
@@ -35,6 +40,8 @@ export function serverProxyRoutes() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     next: NextFunction
   ) => {
+    assertFieldInObject(req, "path", z.string());
+
     const { path } = req.params;
 
     const log = logger().child({ path });
@@ -81,9 +88,19 @@ export function serverProxyRoutes() {
         return;
       }
 
-      if (req.user && req.user.displayName == AGENT_PROJECT) {
-        const agent = await agentCache().get(req.user.id, () =>
-          agentRepository().findById(req.user!.id)
+      if (!authentication_strategy.isUserAuthenticated(req)) {
+        throw new HTTPError(500, "Could not resolve the logged user");
+      }
+
+      if (
+        authentication_strategy.isUserAuthenticated(req) &&
+        authentication_strategy.getUserFromSession(req).displayName ==
+          AGENT_PROJECT
+      ) {
+        const user = authentication_strategy.getUserFromSession(req);
+
+        const agent = await agentCache().get(user.id, () =>
+          agentRepository().findById(user.id)
         );
         if (!agent || agent.serverPath !== path) {
           res.writeHead(403).end(
@@ -135,7 +152,7 @@ export function serverProxyRoutes() {
   // SSE Route
   router.get(
     "/:path/sse",
-    authorise([AuthenticationStrategy.Permissions.ProxyApiAccess]),
+    authorise([authentication_strategy.Permissions.ProxyApiAccess]),
     async (req: Request, res: Response, next: NextFunction) => {
       const { path } = req.params;
 
@@ -166,7 +183,7 @@ export function serverProxyRoutes() {
   // Messages route
   router.post(
     "/:path/messages",
-    authorise([AuthenticationStrategy.Permissions.ProxyApiAccess]),
+    authorise([authentication_strategy.Permissions.ProxyApiAccess]),
     async (req: Request, res: Response, next: NextFunction) => {
       const { path } = req.params;
 
@@ -197,7 +214,7 @@ export function serverProxyRoutes() {
   // Streamable HTTP Routes
   router.post(
     "/:path/mcp",
-    authorise([AuthenticationStrategy.Permissions.ProxyApiAccess]),
+    authorise([authentication_strategy.Permissions.ProxyApiAccess]),
     async (req, res, next) => {
       const { path } = req.params;
 
@@ -226,7 +243,7 @@ export function serverProxyRoutes() {
   );
   router.get(
     "/:path/mcp",
-    authorise([AuthenticationStrategy.Permissions.ProxyApiAccess]),
+    authorise([authentication_strategy.Permissions.ProxyApiAccess]),
     async (req, res, next) => {
       const { path } = req.params;
 
@@ -255,7 +272,7 @@ export function serverProxyRoutes() {
   );
   router.delete(
     "/:path/mcp",
-    authorise([AuthenticationStrategy.Permissions.ProxyApiAccess]),
+    authorise([authentication_strategy.Permissions.ProxyApiAccess]),
     async (req, res, next) => {
       const { path } = req.params;
 

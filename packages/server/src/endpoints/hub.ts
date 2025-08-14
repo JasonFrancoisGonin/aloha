@@ -1,7 +1,22 @@
+/*
+Copyright (C) 2025 European Union
+
+Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the
+European Commission – subsequent versions of the EUPL (the “Licence”);
+You may not use this work except in compliance with the Licence.
+You may obtain a copy of the Licence at:
+* https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12 *
+
+Unless required by applicable law or agreed to in writing, software distributed under
+the Licence is distributed on an “AS IS” basis, WITHOUT WARRANTIES OR CONDITIONS
+OF ANY KIND, either express or implied. See the Licence for the specific language
+governing permissions and limitations under the Licence.
+*/
+
 import express, { Router, Request, Response } from "express";
 import {
-  AuthenticationStrategy,
-  entrypoint_schemas,
+  authentication_strategy,
+  endpoints_schemas,
   // schemas,
 } from "aloha-shared";
 import { injector } from "../injector/injector";
@@ -9,6 +24,9 @@ import { authorise } from "../middleware/authorise";
 import { getLogger } from "../injector/provide-logger";
 import { unknownToString } from "../utils/type-utils";
 import { mcpServerShutdown, mcpServerStartup } from "../mcp/mcp-server-setup";
+import path from "path";
+import fs from "fs/promises";
+import { fileURLToPath } from "url";
 
 const logger = getLogger("HUB");
 const startDate = new Date();
@@ -16,9 +34,11 @@ const startDate = new Date();
 export function hubRouter() {
   const router: Router = express.Router();
 
+  logger().info("Registering hub router");
+
   // Get information of the connected user
   router.get("/", (_req: Request, res: Response) => {
-    const mcpManager = injector.resolve("mcpManager");
+    const mcpManager = injector().resolve("mcpManager");
     const connections = Array.from(mcpManager.getConnections()).filter(
       (c) => c.connectionOptions.type == "client"
     );
@@ -31,7 +51,7 @@ export function hubRouter() {
 
     // const agents = injector.resolve("agentRepository").findByPattern({});
 
-    const response = entrypoint_schemas.HubStatusSchema.parse({
+    const response = endpoints_schemas.HubStatusSchema.parse({
       startDate,
       manager: {
         startDate: mcpManager.getStartDate(),
@@ -48,13 +68,13 @@ export function hubRouter() {
         online: servers.length,
         total: servers.length,
       },
-    } as entrypoint_schemas.HubStatus);
+    } as endpoints_schemas.HubStatus);
     res.json(response).end();
   });
 
   router.post(
     "/restart",
-    authorise([AuthenticationStrategy.Permissions.Administration]),
+    authorise([authentication_strategy.Permissions.Administration]),
     async (_req, res) => {
       try {
         await mcpServerShutdown();
@@ -66,6 +86,29 @@ export function hubRouter() {
       }
     }
   );
+
+  router.get("/changelog", async (_req, res) => {
+    try {
+      // Path to the changelog file at the project root
+      const changelogPath =
+        process.env.CHANGELOG_PATH ||
+        path.resolve(
+          path.dirname(fileURLToPath(import.meta.url)),
+          "../../../../CHANGELOG.md"
+        );
+      console.log(changelogPath);
+
+      // Read the changelog file
+      const content = await fs.readFile(changelogPath, "utf-8");
+
+      // Set appropriate headers for markdown file
+      res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+      res.send(content);
+    } catch (error) {
+      console.error("Error serving changelog:", error);
+      res.status(500).send("Error loading changelog");
+    }
+  });
 
   return router;
 }

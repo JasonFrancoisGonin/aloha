@@ -13,18 +13,9 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import pino from "pino";
-import { Injector } from "typed-inject";
-import { injector } from "./injector";
 import { logger as slogger } from "aloha-shared";
-
-const logger = pino({ base: null });
-
-export function provideLogger<T>(injector: Injector<T>) {
-  const l: slogger.Logger = logger;
-  return injector.provideValue("rootLogger", l);
-}
+import { injector } from "./injector";
 
 export function getLogger(module: string): () => slogger.Logger {
-  return () => injector.resolve("rootLogger").child({ module });
+  return () => injector().resolve("rootLogger").child({ module });
 }

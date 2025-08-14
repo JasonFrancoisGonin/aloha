@@ -13,15 +13,15 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { AuthenticationStrategy, schemas } from "aloha-shared";
+import { authentication_strategy, schemas } from "aloha-shared";
 import { NextFunction, Request, RequestHandler, Response } from "express";
 import jwt from "jsonwebtoken";
 import { injector } from "../injector/injector";
 import { getLogger } from "../injector/provide-logger";
 
 const logger = getLogger("JWT-AUTH-MIDDLEWARE");
-const repository = () => injector.resolve("tokenRepository");
-const tokensCache = () => injector.resolve("jwtCache");
+const repository = () => injector().resolve("tokenRepository");
+const tokensCache = () => injector().resolve("jwtCache");
 
 export type AlohaJWTPayload = {
   tokenId: string;
@@ -36,7 +36,7 @@ export const AGENT_PROJECT = "AGENT";
 
 // const projectRepository = injector.resolve("projectRepository");
 
-const jwtAuthenticationStrategy: AuthenticationStrategy.AuthenticationStrategy =
+const jwtAuthenticationStrategy: authentication_strategy.AuthenticationStrategy =
   {
     async init() {},
 
@@ -52,7 +52,7 @@ const jwtAuthenticationStrategy: AuthenticationStrategy.AuthenticationStrategy =
       }
 
       return async (req, res, next) => {
-        if (!req.user) {
+        if (!authentication_strategy.isUserAuthenticated(req)) {
           // Check for Authentication Bearer token
           const authHeader = req.headers.authorization;
           if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -84,13 +84,13 @@ const jwtAuthenticationStrategy: AuthenticationStrategy.AuthenticationStrategy =
                 300
               );
               if (decodedToken != null) {
-                req.user = {
+                authentication_strategy.storeUserIntoSession(req, {
                   id: decodedToken.userId,
                   userId: decodedToken.userId,
                   displayName: decodedToken.sub,
                   permissions: decodedToken.claims,
                   provider: PROVIDER_NAME,
-                };
+                });
               }
             } catch (error) {
               console.error("JWT verification error:", error);
@@ -103,7 +103,7 @@ const jwtAuthenticationStrategy: AuthenticationStrategy.AuthenticationStrategy =
 
     // eslint-disable-next-line @typescript-eslint/require-await
     async checkPermissions(
-      user: AuthenticationStrategy.UserPrincipal,
+      user: authentication_strategy.UserPrincipal,
       requiredPermissions: string[]
     ) {
       if (user.provider !== PROVIDER_NAME) return false;

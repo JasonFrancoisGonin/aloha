@@ -14,9 +14,9 @@ governing permissions and limitations under the Licence.
 */
 
 import {
-  AuthenticationStrategy,
+  authentication_strategy,
   schemas,
-  entrypoint_schemas,
+  endpoints_schemas,
 } from "aloha-shared";
 import { injector } from "../injector/injector";
 import { getLogger } from "../injector/provide-logger";
@@ -26,14 +26,16 @@ import { Request, Response } from "express";
 import { createJwtToken } from "../middleware/jwt-authentication";
 import { NO_AUTHENTICATION_USER_ID } from "../middleware/no-authentication";
 
-const fetchCache = () => injector.resolve("fetchCache");
+const fetchCache = () => injector().resolve("fetchCache");
 const logger = getLogger("TOKENS");
 
-const repository = () => injector.resolve("tokenRepository");
-const projectRepository = () => injector.resolve("projectRepository");
-const userRepository = () => injector.resolve("userRepository");
+const repository = () => injector().resolve("tokenRepository");
+const projectRepository = () => injector().resolve("projectRepository");
+const userRepository = () => injector().resolve("userRepository");
 
 export function tokensRoutes() {
+  logger().info("Registering tokens router");
+
   const router = crudGenerator<schemas.JWTToken>({
     name: "tokens",
     logger: logger,
@@ -42,20 +44,34 @@ export function tokensRoutes() {
     readPermissions: [],
     writePermissions: [],
     endpoints: {
-      list: true,
+      list: {
+        enableCache: false,
+        factory: async (req) => {
+          const userFromSession =
+            authentication_strategy.getUserFromSession(req);
+          const tokens = await repository().findByPattern({
+            userId: userFromSession.id,
+          });
+          return tokens;
+        },
+      },
     },
   });
 
   router.post(
     "/",
     authorise([]),
-    validateRequestBody(entrypoint_schemas.JWTTokenRequestSchema, logger),
+    validateRequestBody(endpoints_schemas.JWTTokenRequestSchema, logger),
     async (req: Request, res: Response) => {
       const log = logger().child({ jwtTokenRequest: req.body as unknown });
       log.info("Create new JWT Token");
       try {
-        const request = req.body as entrypoint_schemas.JWTTokenRequest;
-        const user = req.user!; // Given the authorise, we can be sure to have a user
+        // if (!authentication_strategy.isUserAuthenticated(req)) {
+        //   res.status(500).json({ error: "Could not resolve the logged user" });
+        //   return;
+        // }
+        const request = req.body as endpoints_schemas.JWTTokenRequest;
+        const user = authentication_strategy.getUserFromSession(req);
         const projects = await projectRepository().findByPattern({
           projectId: request.project,
         });
@@ -70,22 +86,16 @@ export function tokensRoutes() {
         let userId = NO_AUTHENTICATION_USER_ID;
 
         if (user.id !== NO_AUTHENTICATION_USER_ID) {
-          const dbUsers = await userRepository().findByPattern({
-            userId: user.id,
-          });
-          if (
-            !dbUsers ||
-            dbUsers.length == 0 ||
-            !dbUsers[0].projects?.includes(project.id)
-          ) {
+          const dbUsers = await userRepository().findById(user.id);
+          if (!dbUsers) {
             res.status(403).json({ error: "Not authorised" });
             return;
           }
 
-          userId = dbUsers[0].id;
+          userId = dbUsers.id;
         }
         const tokenPermissions = [
-          AuthenticationStrategy.Permissions.ProxyApiAccess,
+          authentication_strategy.Permissions.ProxyApiAccess,
         ];
         const newToken = await repository().create({
           userId: userId,

@@ -85,7 +85,7 @@ export default class MCPClient {
 
   private getSSEClientTransportOptions(
     serverOptions: schemas.MCPBaseConnection
-  ): SSEClientTransportOptions | StreamableHTTPClientTransportOptions {
+  ): SSEClientTransportOptions {
     if (serverOptions.authentication) {
       let additionalHeaders: { [k: string]: string } | undefined;
 
@@ -120,6 +120,46 @@ export default class MCPClient {
               });
             },
           },
+          requestInit: {
+            headers: additionalHeaders,
+          },
+        };
+      }
+    }
+
+    return {};
+  }
+
+  private getStreamableHTTPClientTransportOptions(
+    serverOptions: schemas.MCPBaseConnection
+  ): StreamableHTTPClientTransportOptions {
+    if (serverOptions.authentication) {
+      let additionalHeaders: { [k: string]: string } | undefined;
+
+      switch (serverOptions.authentication.type) {
+        case "none":
+          break;
+        case "basic": {
+          const authData = serverOptions.authentication;
+          additionalHeaders = {
+            Authorization:
+              "Basic " + btoa(authData.username + ":" + authData.password),
+          };
+          break;
+        }
+        case "token": {
+          const authData = serverOptions.authentication;
+          additionalHeaders = {
+            Authorization: "Bearer " + authData.token,
+          };
+        }
+      }
+
+      if (additionalHeaders) {
+        return {
+          requestInit: {
+            headers: additionalHeaders,
+          },
         };
       }
     }
@@ -133,7 +173,7 @@ export default class MCPClient {
     switch (serverOptions.serverProtocol) {
       case "http": {
         const stremableOptions =
-          this.getSSEClientTransportOptions(serverOptions);
+          this.getStreamableHTTPClientTransportOptions(serverOptions);
         return new StreamableHTTPClientTransport(
           new URL(serverOptions.serverUrl),
           stremableOptions
@@ -179,7 +219,7 @@ export default class MCPClient {
           return true;
         })
         .catch(async (err) => {
-          log.error(hasMessageField(err) ? err.message : err);
+          log.debug(hasMessageField(err) ? err.message : err);
           await this.close();
           return false;
         })
@@ -249,7 +289,9 @@ export default class MCPClient {
       log.error("Unable to send MCP request: client is not connected");
       throw new Error(`Client is not connected`);
     }
-    const result = await this.client.request(request, schema);
+    const result = await this.client.request(request, schema, {
+      timeout: 10 * 60 * 1000,
+    });
     return result;
   }
 }

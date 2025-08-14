@@ -17,16 +17,16 @@ import { injector } from "../injector/injector";
 import { getLogger } from "../injector/provide-logger";
 
 const logger = getLogger("MCP-SERVER-SETUP");
-const mcpManager = () => injector.resolve("mcpManager");
+const mcpManager = () => injector().resolve("mcpManager");
 
 export async function mcpServerStartup() {
   const manager = mcpManager();
   logger().info("Setting up MCP Hub");
-  const connectionsOptionsRepository = injector.resolve(
+  const connectionsOptionsRepository = injector().resolve(
     "connectionOptionsRepository"
   );
-  const serverOptionsRepository = injector.resolve("serverOptionsRepository");
-  const agentsRepository = injector.resolve("agentRepository");
+  const serverOptionsRepository = injector().resolve("serverOptionsRepository");
+  const agentsRepository = injector().resolve("agentRepository");
 
   const connectionOptions = await connectionsOptionsRepository.findByPattern(
     {}

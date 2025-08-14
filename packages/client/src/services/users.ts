@@ -12,19 +12,23 @@ the Licence is distributed on an “AS IS” basis, WITHOUT WARRANTIES OR CONDIT
 OF ANY KIND, either express or implied. See the Licence for the specific language
 governing permissions and limitations under the Licence.
 */
-import { AuthenticationStrategy, schemas } from "aloha-shared";
+import {
+    authentication_strategy,
+    schemas
+} from "aloha-shared";
 import { customFetch } from "./utils";
 
 const apiBaseUrl = "/api";
 const apiUsersUrl = "/api/user";
 
-export async function getUserInfo(): Promise<AuthenticationStrategy.UserPrincipal | null> {
+export async function getUserInfo(): Promise<authentication_strategy.UserPrincipalWithProjects | null> {
   const response = await customFetch(
     "Get authenticated user info",
     `${apiBaseUrl}/user-info`
   );
   if (response.status === 204) return null;
-  return await response.json();
+  const resp = await response.json();
+  return authentication_strategy.UserPrincipalWithProjectsSchema.parse(resp);
 }
 
 // Get all users

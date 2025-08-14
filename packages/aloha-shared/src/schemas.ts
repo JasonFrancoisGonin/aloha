@@ -208,3 +208,27 @@ export type JWTToken = z.infer<typeof JWTTokenSchema>;
 
 export const JWTTokenWithIdSchema = WithIdBaseSchema.and(JWTTokenSchema);
 export type JWTTokenWithId = z.infer<typeof JWTTokenWithIdSchema>;
+
+export const TestbedAgentSchema = VisibilitySchema.merge(
+  z.object({
+    client: z.object({
+      apiKey: z.string().min(1, "API key is required"),
+      baseURL: z.string().min(1, "BaseURL is required"),
+    }),
+    useChatCompletions: z.boolean(),
+    model: z.string().min(1, "Model Name is required"),
+    prompt: z.string().min(1, "Prompt is required"),
+    name: z.string().min(1, "Name is required"),
+    description: z.string().optional(),
+    connections: z
+      .array(z.string().min(1, "Connection id is required"))
+      .optional(),
+    type: z.literal("testbed_agent"),
+  })
+);
+export type TestbedAgent = z.infer<typeof TestbedAgentSchema>;
+
+export const TestbedAgentWithIdSchema =
+  WithIdBaseSchema.and(TestbedAgentSchema);
+
+export type TestbedAgentWithId = z.infer<typeof TestbedAgentWithIdSchema>;

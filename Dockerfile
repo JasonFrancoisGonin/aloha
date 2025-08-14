@@ -1,5 +1,5 @@
 # Stage 1: Build the client, server, and plugin
-FROM quay.apps.ocpt.jrc.ec.europa.eu/public/redhat/ubi9/nodejs-20:latest
+FROM quay.apps.ocpt.jrc.ec.europa.eu/public/redhat/ubi9/nodejs-22:latest
 
 # Set working directory for the main project
 WORKDIR /app
@@ -16,6 +16,7 @@ USER 1001
 
 ENV AUTHENTICATION_PLUGIN=/app/plugins/ecas/lib/plugin.js
 ENV CLIENT_DIR=/app/packages/client/dist/
+ENV CHANGELOG_PATH=/app/CHANGELOG.md
 ENV NODE_ENV=production
 ENV SERVER_PORT=8080
 
