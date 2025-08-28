@@ -36,7 +36,6 @@ import {
   setAgentCreator,
   setAgentVisibility,
 } from "../../services/agents";
-// import AgentEditDialog from "./agent-edit-dialog";
 import { CreatorAndVisibilityEditor } from "@/components/creator-and-visibility-editor";
 import {
   Card,
@@ -174,9 +173,10 @@ export default function AgentDetailPage() {
 
   return (
     <div className="max-w-8xl mx-auto px-4">
+      {/* Header Section */}
       <div className="">
-        <div className="flex justify-between items-start mb-6">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-6 gap-4">
+          <div className="flex-1 min-w-0">
             <PageTitle
               className="flex gap-6 items-center"
               isConnected={agentDetail.isConnected}
@@ -189,7 +189,7 @@ export default function AgentDetailPage() {
               </p>
             )}
           </div>
-          <div className="flex flex-shrink-0 ml-8 gap-2">
+          <div className="flex flex-shrink-0 gap-2 sm:ml-8 self-start">
             <ConfirmDialog
               onClick={() => {
                 return doDeleteAgent();
@@ -256,45 +256,48 @@ export default function AgentDetailPage() {
               )}
             </div>
           </div>
+
           <div className="lg:w-2/3 mt-8 lg:mt-0">
             {agentDetail.tools &&
               agentDetail.isConnected &&
               agentDetail.id &&
               !!agentDetail.tools.length && (
                 <div>
-                  <div className="flex flex-wrap gap-8">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                     {agentDetail.tools.map((r) => (
-                      <>
-                        <Card
-                          key={r.name}
-                          className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl"
-                          style={{
-                            animation: "fadeInUp 0.3s ease-out forwards",
-                          }}
-                        >
-                          <CardHeader className="pb-3">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="text-base font-semibold text-gray-900">
-                                {r.name}
-                              </CardTitle>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="flex-grow text-sm text-gray-600 pb-3 truncate">
-                            {r.description || (
-                              <span className="italic text-gray-400">
-                                No description provided.
-                              </span>
-                            )}
-                          </CardContent>
-                          <CardFooter className="pt-0">
-                            <MCPClientTool
-                              disabled={!isClientCallable}
-                              tool={r}
-                              clientId={agentDetail.id!}
-                            />
-                          </CardFooter>
-                        </Card>
-                      </>
+                      <Card
+                        key={r.name}
+                        className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl flex flex-col h-full"
+                        style={{
+                          animation: "fadeInUp 0.3s ease-out forwards",
+                        }}
+                      >
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-base font-semibold text-gray-900">
+                              {r.name}
+                            </CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="flex-grow text-sm text-gray-600 pb-3">
+                          {r.description ? (
+                            <p className="text-gray-600 line-clamp-3">
+                              {r.description}
+                            </p>
+                          ) : (
+                            <p className="italic text-gray-400">
+                              No description provided.
+                            </p>
+                          )}
+                        </CardContent>
+                        <CardFooter className="pt-0">
+                          <MCPClientTool
+                            disabled={!isClientCallable}
+                            tool={r}
+                            clientId={agentDetail.id!}
+                          />
+                        </CardFooter>
+                      </Card>
                     ))}
                   </div>
                 </div>
@@ -429,7 +432,7 @@ export default function AgentDetailPage() {
                       {isTheUserTheOwner && (
                         <button
                           onClick={() => dissociateClient(connection.id)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all duration-150 opacity-0 group-hover:opacity-100"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 group-hover:opacity-100"
                           title="Remove association"
                         >
                           <MinusCircleIcon width={18} />
@@ -531,7 +534,7 @@ export default function AgentDetailPage() {
                       {isTheUserTheOwner && (
                         <button
                           onClick={() => associateClient(connection.id!)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-all duration-150 opacity-0 group-hover:opacity-100"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50"
                           title="Associate with server"
                         >
                           <PlusCircleIcon width={18} />
