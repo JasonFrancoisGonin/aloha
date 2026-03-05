@@ -19,16 +19,31 @@ import { ZodSchema } from "zod";
 export class HTTPError extends Error {
   private _status: number;
   private _statusDescription: string;
+
+  constructor(message?: string, response?: Response);
+  constructor(message?: string, status?: number, statusDescription?: string);
+  constructor(
+    message?: string,
+    status?: number | Response,
+    statusDescription?: string
+  ) {
+    super(message);
+    if (typeof status === "number") {
+      this._status = status ?? 0;
+      this._statusDescription = statusDescription ?? "Unknown status code";
+    } else if (status !== undefined) {
+      this._status = status.status;
+      this._statusDescription = status.statusText;
+    } else {
+      this._status = 0;
+      this._statusDescription = "Unknown status code";
+    }
+  }
   public get status() {
     return this._status;
   }
   public get statusDescription() {
     return this._statusDescription;
-  }
-  constructor(message?: string, status?: number, statusDescription?: string) {
-    super(message);
-    this._status = status ?? 0;
-    this._statusDescription = statusDescription ?? "Unknown status code";
   }
 }
 

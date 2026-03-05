@@ -22,7 +22,7 @@ export function projectsRoutes() {
   const repository = () => injector().resolve("projectRepository");
   const logger = getLogger("PROJECTS");
 
-  logger().info("Registering proojects router");
+  logger().debug("Registering projects router");
 
   return crudGenerator({
     name: "project",

@@ -52,7 +52,7 @@ export default function TestbedAgentsListPage() {
   );
 
   return (
-    <div className="max-w-8xl mx-auto">
+    <div className="max-w-8xl mx-auto" data-testid="testbed-agent-list-page-witness">
       {/* Page Header */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-6">
@@ -84,7 +84,7 @@ export default function TestbedAgentsListPage() {
 
       {isLoading && <Loading message="Loading testbed agents..." />}
 
-      <div className="flex flex-wrap gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {!isLoading &&
           agents
             .filter(filterAgents)

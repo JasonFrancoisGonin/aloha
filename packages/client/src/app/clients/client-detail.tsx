@@ -50,6 +50,8 @@ import {
   WrenchScrewdriverIcon,
 } from "@heroicons/react/16/solid";
 import { schemas } from "aloha-shared";
+import { OIDCRegistration } from "@/components/oidc-registration";
+import { TagsList } from "@/components/tags-list";
 
 const PING_TIMEOUT = 3000;
 
@@ -66,6 +68,10 @@ export default function MCPClientDetailsPage() {
 
   const permissionCheker = usePermissionChecker();
 
+  const isAdministrator = useMemo(() => {
+    return permissionCheker.isAdministrator();
+  }, [permissionCheker]);
+
   const isTheUserTheConnectionOwner = useMemo(() => {
     return permissionCheker.hasOwnership(connection);
   }, [connection, permissionCheker]);
@@ -79,10 +85,10 @@ export default function MCPClientDetailsPage() {
 
   const tabCounts = useMemo(
     () => ({
+      tools: connection?.tools?.length || 0,
       resources: connection?.resources?.length || 0,
       templates: connection?.resourceTemplates?.length || 0,
       prompts: connection?.prompts?.length || 0,
-      tools: connection?.tools?.length || 0,
     }),
     [connection]
   );
@@ -108,7 +114,7 @@ export default function MCPClientDetailsPage() {
             The requested MCP client could not be found.
           </p>
           <MCPClientDeleteDialog
-            disabled={!permissionCheker.isAdministrator()}
+            disabled={!isAdministrator}
             client={{
               id: params.id,
               isError: true,
@@ -125,11 +131,12 @@ export default function MCPClientDetailsPage() {
     <div className="">
       {/* Header Section */}
       <div className="">
-        <div className="flex justify-between items-start mb-6">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-6 gap-4">
+          <div className="flex-1 min-w-0">
             <PageTitle
               className="flex gap-6 items-center"
               isConnected={connection.isConnected}
+              isDisabled={connection.disabled}
             >
               {connection.name}
             </PageTitle>
@@ -139,7 +146,7 @@ export default function MCPClientDetailsPage() {
               </p>
             )}
           </div>
-          <div className="flex flex-shrink-0 ml-6 gap-2">
+          <div className="flex flex-shrink-0 gap-2 sm:ml-6 self-start">
             <MCPClientDeleteDialog
               client={connection}
               disabled={!isTheUserTheConnectionOwner}
@@ -180,6 +187,7 @@ export default function MCPClientDetailsPage() {
         <div className="lg:flex gap-12">
           {/* Configuration Panel */}
           <div className="lg:w-1/3">
+            <TagsList item={connection} inline={false} />
             <div className="space-y-2">
               <dt className="text-sm font-semibold uppercase tracking-wide">
                 Server URL
@@ -189,7 +197,11 @@ export default function MCPClientDetailsPage() {
                 className="max-w-full"
               />
             </div>
-
+            <div className="mt-6">
+              {connection.id !== undefined && (
+                <OIDCRegistration item={connection}></OIDCRegistration>
+              )}
+            </div>
             <div className="mt-6">
               {connection.id !== undefined && (
                 <CreatorAndVisibilityEditor
@@ -217,11 +229,11 @@ export default function MCPClientDetailsPage() {
                   }
                   className="w-full"
                 >
-                  <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 gap-1 bg-gray-200 rounded-lg h-11 px-2">
+                  <TabsList className="flex w-full md:grid md:grid-cols-4 gap-1 bg-gray-200 rounded-lg h-11 px-2 overflow-x-auto md:overflow-visible">
                     {tabCounts.tools > 0 && (
                       <TabsTrigger
                         value="tools"
-                        className="data-[state=active]:bg-gray-50 h-8 duration-0"
+                        className="data-[state=active]:bg-gray-50 h-8 duration-0 flex-shrink-0 md:flex-shrink"
                       >
                         <WrenchScrewdriverIcon className="w-4 h-4 mr-1" />
                         Tools
@@ -232,7 +244,7 @@ export default function MCPClientDetailsPage() {
                     )}
                     <TabsTrigger
                       value="resources"
-                      className="data-[state=active]:bg-gray-50 h-8 duration-0"
+                      className="data-[state=active]:bg-gray-50 h-8 duration-0 flex-shrink-0 md:flex-shrink"
                     >
                       <DocumentDuplicateIcon className="w-4 h-4 mr-1" />
                       Resources
@@ -242,7 +254,7 @@ export default function MCPClientDetailsPage() {
                     </TabsTrigger>
                     <TabsTrigger
                       value="templates"
-                      className="data-[state=active]:bg-gray-50 h-8 duration-0"
+                      className="data-[state=active]:bg-gray-50 h-8 duration-0 flex-shrink-0 md:flex-shrink"
                     >
                       <ClipboardDocumentListIcon className="w-4 h-4 mr-1" />
                       Templates
@@ -252,7 +264,7 @@ export default function MCPClientDetailsPage() {
                     </TabsTrigger>
                     <TabsTrigger
                       value="prompts"
-                      className="data-[state=active]:bg-gray-50 h-8 duration-0"
+                      className="data-[state=active]:bg-gray-50 h-8 duration-0 flex-shrink-0 md:flex-shrink"
                     >
                       <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4 mr-1" />
                       Prompts
@@ -427,14 +439,18 @@ export default function MCPClientDetailsPage() {
                   </svg>
                 </div>
                 <p className="text-lg font-medium text-gray-600">
-                  {!connection.isConnected
+                  {!connection.isConnected && !connection.disabled
                     ? "Client is not connected"
-                    : "No items available or please wait for the client to connect"}
+                    : !connection.disabled
+                      ? "No items available or please wait for the client to connect"
+                      : "Client is disabled"}
                 </p>
-                <p className="text-sm text-gray-500 mt-1">
-                  {!connection.isConnected
+                <p className="text-sm text-gray-500 mt-1 text-center">
+                  {!connection.isConnected && !connection.disabled
                     ? "Connect the client to view available resources, prompts, and tools"
-                    : "This client doesn't provide any resources, prompts, or tools"}
+                    : !connection.disabled
+                      ? "This client doesn't provide any resources, prompts, or tools"
+                      : "This client has been disabled, enable it to access to available resources, prompts and tools"}
                 </p>
               </div>
             )}

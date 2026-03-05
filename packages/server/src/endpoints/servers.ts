@@ -31,6 +31,7 @@ import {
 } from "./utils";
 import { assertFieldInObject } from "../utils/type-utils";
 import z from "zod";
+import { findCachedUsersById } from "../utils/cache.utils";
 
 const mcpManager = () => injector().resolve("mcpManager");
 
@@ -39,18 +40,16 @@ const repository = () => injector().resolve("serverOptionsRepository");
 
 const fetchCache = () => injector().resolve("fetchCache");
 
-const userRepository = () => injector().resolve("userRepository");
-
 export function serverRoutes() {
-  logger().info("Registering server router");
+  logger().debug("Registering server router");
 
   const router = crudGenerator({
     name: "server",
     logger: logger,
     repository,
     schema: schemas.MCPServerOptionsSchema,
-    readPermissions: [],
-    writePermissions: [],
+    readPermissions: [authentication_strategy.Permissions.ServersRead],
+    writePermissions: [authentication_strategy.Permissions.ServersWrite],
     endpoints: {
       list: {
         enableCache: false,
@@ -131,7 +130,7 @@ export function serverRoutes() {
         // }
 
         const user = authentication_strategy.getUserFromSession(req);
-        const loggedUser = await userRepository().findById(user.id);
+        const loggedUser = await findCachedUsersById(user.id);
         if (!loggedUser) {
           throw new HTTPError(500, "Could not resolve the logged user");
         }
@@ -192,7 +191,7 @@ export function serverRoutes() {
             authentication_strategy.Permissions.Administration
           )
         ) {
-          const loggedUser = await userRepository().findById(user.id);
+          const loggedUser = await findCachedUsersById(user.id);
           if (!loggedUser) {
             throw new HTTPError(500, "Could not resolve the logged user");
           }
@@ -233,18 +232,20 @@ export function serverRoutes() {
       const { id, cid } = req.params;
 
       const log = logger().child({ serverId: id, connectionId: cid });
-      log.info("Associate connection to server");
+      log.debug("Associate connection to server");
 
       try {
         if (!id) {
+          log.error("Must provide the id of the server to update");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the server to update" });
           return;
         }
         if (!cid) {
+          log.error("Must provide the id of the client to connect");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the client to connect" });
           return;
         }
@@ -283,10 +284,10 @@ export function serverRoutes() {
           res.status(404).json({ error: "Failed to update server" });
         }
       } catch (error) {
+        log.error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          log.error(error);
           let errorMessage = "Failed to update server";
           if (
             error &&
@@ -312,18 +313,20 @@ export function serverRoutes() {
       const { id, cid } = req.params;
 
       const log = logger().child({ serverId: id, connectionId: cid });
-      log.info("Disconnect client from server");
+      log.debug("Disconnect client from server");
 
       try {
         if (!id) {
+          log.error("Must provide the id of the server to update");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the server to update" });
           return;
         }
         if (!cid) {
+          log.error("Must provide the id of the client to connect");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the client to connect" });
           return;
         }
@@ -354,10 +357,10 @@ export function serverRoutes() {
           res.status(404).json({ error: "Server not found" });
         }
       } catch (error) {
+        log.error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          log.error(error);
           res.status(500).json({ error: "Failed to update server" });
         }
       }
@@ -372,7 +375,7 @@ export function serverRoutes() {
       const { cid } = req.params;
 
       const log = logger().child({ connectionId: cid });
-      log.info("Get servers bound to connection");
+      log.debug("Get servers bound to connection");
 
       try {
         if (!cid) {
@@ -398,6 +401,12 @@ export function serverRoutes() {
     repository,
     logger,
     writePermissions: [authentication_strategy.Permissions.ServersWrite],
+    afterVisibilityChangeCallback: (id, visibility) => {
+      const server = mcpManager().getServer(id)!;
+      server.options.disabled = visibility.disabled;
+      server.options.visibility = visibility.visibility;
+      return Promise.resolve();
+    },
   });
 
   return router;

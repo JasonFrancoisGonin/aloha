@@ -42,6 +42,12 @@ export const AuthenticationSchema = z.discriminatedUnion("type", [
     type: z.literal("token"),
     token: z.string().min(1, "Token cannot be blank"),
   }),
+
+  z.object({
+    type: z.literal("oidc_client_secret"),
+    clientId: z.string().min(1, "OIDC Client Id cannot be blank"),
+    clientSecret: z.string(),
+  }),
 ]);
 export type Authentication = z.infer<typeof AuthenticationSchema>;
 
@@ -53,6 +59,8 @@ export enum Visibility {
 
 export const VisibilitySchema = z.object({
   creator: z.string(),
+
+  disabled: z.boolean().optional(),
   visibility: z.nativeEnum(Visibility), //.default(Visibility.Private),
   projects: z.array(z.string()).optional(),
 });
@@ -64,9 +72,7 @@ export const MCPBaseConnectionSchema = VisibilitySchema.merge(
     description: z.string().optional(),
     serverUrl: z.string().min(1, "Server URL is required"),
     serverProtocol: z.enum(["http", "sse", "websocket"], {
-      errorMap: () => ({
-        message: "Server protocol must be 'sse' or 'websocket'",
-      }),
+      error: "Server protocol must be 'http', 'sse' or 'websocket'",
     }),
     authentication: AuthenticationSchema.optional(),
     type: z.string(),
@@ -147,6 +153,7 @@ export const AgentSchema = MCPBaseConnectionSchema.merge(MCPBaseServerSchema)
   .merge(
     z.object({
       type: z.literal("agent"),
+      serverProtocol: z.enum(["http", "sse", "a2a"]),
     })
   );
 export type Agent = z.infer<typeof AgentSchema>;

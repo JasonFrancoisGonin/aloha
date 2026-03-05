@@ -30,8 +30,24 @@ const connectionOptionsRepository = () =>
 const serverOptionsRepository = () =>
   injector().resolve("serverOptionsRepository");
 
-export function usersRoutes() {
-  logger().info("Registering users router");
+export async function usersRoutes() {
+  logger().debug("Registering users router");
+
+  const createDefaultAdminUser = async () => {
+    const users = await userRepository().count();
+    if (users === 0) {
+      logger().warn("Empty user repository, create a default admin");
+      const adminUserName = process.env.BOOTSTRAP_ADMIN_USERNAME || "admin";
+      await userRepository().create({
+        fullName: "Administrator",
+        userId: adminUserName,
+        permissions: Object.values(authentication_strategy.Permissions),
+        disabled: false,
+      });
+    }
+  };
+
+  await createDefaultAdminUser();
 
   const checkUserName = async (userId: string, databaseId?: string) => {
     if (userId == authentication_strategy.ANONYMOUS_USER) {

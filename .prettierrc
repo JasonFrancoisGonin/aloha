@@ -3,8 +3,5 @@
   "tabWidth": 2,
   "semi": true,
   "singleQuote": false,
-  "plugins_": [
-    "prettier-plugin-organize-imports",
-    "prettier-plugin-tailwindcss"
-  ]
+  "plugins": ["prettier-plugin-sort-members"]
 }

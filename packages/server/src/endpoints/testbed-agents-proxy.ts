@@ -22,7 +22,7 @@ const agentRepository = () => injector().resolve("testbedAgentRepository");
 const logger = getLogger("TESTBED-AGENT");
 
 export function testbedAgentProxyRoutes() {
-  logger().info("Registering testbed agent proxy router");
+  logger().debug("Registering testbed agent proxy router");
 
   const router = express.Router();
   const findAgent = async (req: express.Request) => {
@@ -31,7 +31,7 @@ export function testbedAgentProxyRoutes() {
     if (!id) {
       throw Error("Testbed Agent ID not provided");
     }
-    log.info("Proxy request");
+    log.debug("Proxy request");
     const agent = await agentRepository().findById(id);
     if (!agent) {
       throw new Error("Testbed Agent not found");
@@ -48,7 +48,7 @@ export function testbedAgentProxyRoutes() {
     secure: false,
     logger: console,
     pathRewrite: (path) => {
-      logger().child({ path }).info("Proxing path");
+      logger().child({ path }).debug("Proxying path");
       return path;
     },
     router: resolveTarget,
@@ -67,7 +67,7 @@ export function testbedAgentProxyRoutes() {
         Authorization: `Bearer ${agent.apiKey}`,
       },
     });
-    const data = await response.json();
+    const data = (await response.json()) as unknown;
     res.json(data);
   });
   router.use("/:id", proxyMiddleware);

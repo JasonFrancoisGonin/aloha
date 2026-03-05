@@ -21,20 +21,24 @@ import session from "express-session";
 import path from "path";
 import { injector } from "../injector/injector";
 import { getLogger } from "../injector/provide-logger";
-import { setAuthPlugins } from "../middleware/authorise";
+import { getAuthPlugins, setAuthPlugins } from "../middleware/authorise";
 import jwtAuthenticationStrategy from "../middleware/jwt-authentication";
 import noAuthenticationStrategy from "../middleware/no-authentication";
+import oidcAuthentication from "../middleware/oidc-authentication";
+import { setupOptionalOAuthProxy } from "../middleware/oidc/oidc-support";
 import { agentRoutes } from "./agents";
 import { clientsRoutes } from "./clients";
 import { hubRouter } from "./hub";
 import { projectsRoutes } from "./projects";
 import { serverRoutes } from "./servers";
-import { serverProxyRoutes } from "./servers-proxy";
+import { serverProxyRoutes } from "./servers-proxy-mcp";
 import { testbedAgentRoutes } from "./testbed-agents";
+import { testbedAgentProxyRoutes } from "./testbed-agents-proxy";
 import { tokensRoutes } from "./tokens";
 import { userInfoRouter } from "./user-info";
 import { usersRoutes } from "./users";
-import { testbedAgentProxyRoutes } from "./testbed-agents-proxy";
+import { getUserWithIdFromRepository } from "./utils";
+import { serverProxyA2ARoutes } from "./servers-proxy-a2a";
 
 const logger = getLogger("EXPRESS-SETUP");
 
@@ -53,12 +57,22 @@ async function loadAuthPlugins(): Promise<
     });
   }
 
+  const oidcEnabled = injector().resolve("oidcEnabled");
+  if (oidcEnabled) {
+    log.info("Loading OIDC authentication");
+    plugins.push(oidcAuthentication);
+    await oidcAuthentication.init();
+  }
+
   const pluginPath = injector().resolve("pluginPath");
+  const isProduction = injector().resolve("isProduction");
 
   if (!pluginPath) {
-    if (injector().resolve("isProduction")) {
-      throw new Error("AUTHENTICATION_PLUGIN environment variable not set");
-    } else {
+    if (!oidcEnabled && isProduction) {
+      throw new Error(
+        "AUTHENTICATION_PLUGIN environment variable not set and OIDC has not been enabled"
+      );
+    } else if (!oidcEnabled && !isProduction) {
       log.info("Use NO Auth AuthenticationStrategy");
       plugins.push(noAuthenticationStrategy);
       await noAuthenticationStrategy.init({
@@ -96,7 +110,9 @@ export async function expressSetup() {
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: injector().resolve("isProduction"),
+      secure:
+        (process.env.SECURE_COOKIES ||
+          String(injector().resolve("isProduction"))) === "true",
       maxAge: injector().resolve("sessionMaxAge"),
     },
     store: injector().resolve("sessionStore"),
@@ -105,21 +121,21 @@ export async function expressSetup() {
   app.use(session(sessionConfig));
 
   // Load authentication plugin
-  const authPlugins = await loadAuthPlugins();
-  setAuthPlugins(authPlugins);
+  const standardPlugins = await loadAuthPlugins();
+
+  setAuthPlugins([...getAuthPlugins(), ...standardPlugins]);
 
   app.use(cookie_parser());
+
+  await setupOptionalOAuthProxy(app);
 
   // Apply authentication middlewares
   const log = logger();
 
   log.info("Registering AuthenticationStrategy middlewares");
-  for (const plugin of authPlugins) {
+  for (const plugin of getAuthPlugins()) {
     app.use(
-      await plugin.getAuthenticationMiddleware(async (username: string) => {
-        const userRepository = injector().resolve("userRepository");
-        return await userRepository.findByUserId(username);
-      })
+      await plugin.getAuthenticationMiddleware(getUserWithIdFromRepository)
     );
   }
 
@@ -145,13 +161,13 @@ export async function expressSetup() {
   log.info("Registering login endpoint");
   app.use(
     "/api/login",
-    ...(await Promise.all(authPlugins.map((plugin) => plugin.login())))
+    ...(await Promise.all(getAuthPlugins().map((plugin) => plugin.login())))
   );
 
   log.info("Registering logout endpoint");
   app.use(
     "/api/logout",
-    ...(await Promise.all(authPlugins.map((plugin) => plugin.logout())))
+    ...(await Promise.all(getAuthPlugins().map((plugin) => plugin.logout())))
   );
 
   // Apply routes
@@ -159,15 +175,21 @@ export async function expressSetup() {
 
   app.use("/api/hub/", hubRouter());
   app.use("/api/user-info/", userInfoRouter());
+  app.use("/api/a2a/", serverProxyA2ARoutes());
   app.use("/api/mcp/", serverProxyRoutes());
   app.use("/api/client/", clientsRoutes());
   app.use("/api/server/", serverRoutes());
-  app.use("/api/user/", usersRoutes());
+  app.use("/api/user/", await usersRoutes());
   app.use("/api/token/", tokensRoutes());
   app.use("/api/project/", projectsRoutes());
   app.use("/api/agent/", agentRoutes());
   app.use("/api/testbedAgent/", testbedAgentRoutes());
   app.use("/api/testbedAgentProxy/", testbedAgentProxyRoutes());
+
+  logger().info("Registering healtz route");
+  app.get("/healtz", (_req, res) => {
+    res.header("X-Health-Check", "Ok").send("alive");
+  });
 
   // Add react dist and health endpoints, if in production
   if (injector().resolve("isProduction")) {
@@ -177,11 +199,6 @@ export async function expressSetup() {
     }
 
     // Serve index.html for all undefined routes
-
-    logger().info("Registering healtz route");
-    app.get("/healtz", (_req, res) => {
-      res.header("X-Health-Check", "Ok").send("alive");
-    });
 
     logger().info("Registering static data route");
     app.use(express.static(clientDir));
@@ -202,7 +219,9 @@ export async function expressSetup() {
       _next: express.NextFunction
     ) => {
       logger().error(err);
-      res.status(500).json({ message: "Internal server error" });
+      res
+        .status(500)
+        .json({ message: "Internal server error! Check the server log" });
     }
   );
 

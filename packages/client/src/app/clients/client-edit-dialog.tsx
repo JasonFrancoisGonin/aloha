@@ -33,6 +33,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -41,6 +43,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useService } from "@/hooks/useService";
+import { isWithErrorsObject, WithErrors } from "@/services/utils";
+import { generateRandomString } from "@/utils/string-utils";
 import { exceptionToMessage, hasMessageField } from "@/utils/type-utils";
 import { DocumentPlusIcon, PencilIcon } from "@heroicons/react/16/solid";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -51,9 +56,11 @@ import { useNavigate } from "react-router";
 import { catchError, filter, map, of, tap } from "rxjs";
 import { toast } from "sonner";
 import { z } from "zod";
-import { createConnection, editConnection } from "../../services/clients";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { WithErrors } from "@/services/utils";
+import {
+  createConnection,
+  editConnection,
+  isConnectionRegisteredWithIdentityPropagationService,
+} from "../../services/clients";
 
 const MCPConnectionOptionsWithTagStringSchema =
   endpoints_schemas.MCPConnectionOptionsCreateSchema.omit({ tags: true }).and(
@@ -88,20 +95,29 @@ function prepareEditConnectionData(values: MCPConnectionOptionsWithTagString) {
       .split(",")
       .map((e) => e.trim())
       .filter((e) => e !== ""),
-    authentication: {
-      ...(values.authentication?.type === "basic"
-        ? {
-            type: "basic",
-            username: values.authentication?.username,
-            password: values.authentication?.password,
-          }
-        : values.authentication?.type === "token"
-          ? {
-              type: "token",
-              token: values.authentication?.token,
-            }
-          : { type: "none" }),
-    },
+    authentication: values.authentication
+      ? { ...values.authentication }
+      : { type: "none" },
+    // authentication: {
+    //   ...(values.authentication?.type === "basic"
+    //     ? {
+    //         type: "basic",
+    //         username: values.authentication?.username,
+    //         password: values.authentication?.password,
+    //       }
+    //     : values.authentication?.type === "token"
+    //       ? {
+    //           type: "token",
+    //           token: values.authentication?.token,
+    //         }
+    //       : values.authentication?.type === "oidc_client_secret"
+    //         ? {
+    //             type: "oidc_client_secret",
+    //             clientId: values.authentication.clientId,
+    //             clientSecret: values.authentication.clientSecret,
+    //           }
+    //         : { type: "none" }),
+    // },
   });
 }
 
@@ -131,6 +147,24 @@ export default function MCPClientEditDialog({
   const navigate = useNavigate();
 
   const [createMessages, setCreateMessages] = useState<CreateMessage[]>([]);
+
+  const [loadingOIDCRegistration, registration] = useService(
+    async () => {
+      if (
+        !!client &&
+        !isWithErrorsObject(client) &&
+        client.authentication?.type === "oidc_client_secret"
+      ) {
+        return await isConnectionRegisteredWithIdentityPropagationService(
+          client.id
+        );
+      } else {
+        return null;
+      }
+    },
+    [client, editFormOpen],
+    null
+  );
   const form = useForm({
     resolver: zodResolver(MCPConnectionOptionsWithTagStringSchema),
     values: {
@@ -151,7 +185,10 @@ export default function MCPClientEditDialog({
     const data = prepareEditConnectionData(values);
     try {
       if (client.id) {
-        await editConnection(client.id, data);
+        await editConnection(client.id, {
+          ...data,
+          visibility: client.visibility,
+        });
         navigate(`/clients`);
       }
     } catch (e) {
@@ -254,11 +291,19 @@ export default function MCPClientEditDialog({
       <Dialog open={editFormOpen} onOpenChange={setEditFormOpen}>
         <DialogTrigger asChild disabled={disabled}>
           {client ? (
-            <Button variant="default" className="mr-2">
+            <Button
+              variant="default"
+              className="mr-2"
+              data-testid="edit-client-button-witness"
+            >
               <PencilIcon /> Edit Client
             </Button>
           ) : (
-            <Button variant="default" className="mr-2">
+            <Button
+              variant="default"
+              className="mr-2"
+              data-testid="new-client-button-witness"
+            >
               <DocumentPlusIcon /> New Client
             </Button>
           )}
@@ -379,11 +424,17 @@ export default function MCPClientEditDialog({
                       <FormLabel>Authentication Type</FormLabel>
 
                       <Select
+                        disabled={
+                          client?.authentication?.type ===
+                            "oidc_client_secret" &&
+                          (registration?.registered === true ||
+                            loadingOIDCRegistration)
+                        }
                         onValueChange={field.onChange}
                         defaultValue={field.value}
                       >
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger data-testid="client-auth-select-witness">
                             <SelectValue placeholder="Select the authentication type" />
                           </SelectTrigger>
                         </FormControl>
@@ -391,11 +442,18 @@ export default function MCPClientEditDialog({
                           <SelectItem value="none">None</SelectItem>
                           <SelectItem value="basic">Basic Auth</SelectItem>
                           <SelectItem value="token">Token</SelectItem>
+                          <SelectItem value="oidc_client_secret">
+                            OIDC Client Secret
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                       <FormDescription>
                         The authentication used by the client, select "none"" if
-                        not available
+                        not available. The OIDC Client Secret Password is not
+                        used while authenticating, it's just a field used to
+                        store/generate e password and is sent in case of dynamic
+                        registration issued by Aloha. To change OIDC credential,
+                        the client must not be registered on the OIDC server.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -457,6 +515,87 @@ export default function MCPClientEditDialog({
                     )}
                   />
                 )}
+
+                {authentication?.type === "oidc_client_secret" &&
+                  loadingOIDCRegistration && (
+                    <div className="ml-2">
+                      <Label>Please wait...</Label>
+                    </div>
+                  )}
+
+                {authentication?.type === "oidc_client_secret" &&
+                  !loadingOIDCRegistration && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="authentication.clientId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Client Id</FormLabel>
+                            <FormControl>
+                              <div className="flex">
+                                <Input
+                                  {...field}
+                                  className="mr-2"
+                                  disabled={registration?.registered === true}
+                                />
+                                <Button
+                                  disabled={registration?.registered === true}
+                                  type="button"
+                                  onClick={() =>
+                                    field.onChange(generateRandomString())
+                                  }
+                                >
+                                  Generate
+                                </Button>
+                              </div>
+                            </FormControl>
+                            <FormDescription>
+                              The Client ID the client uses to connect to the
+                              IDP. This field is used to obtain a bearer token
+                              to connect to the client and must be the same
+                              value used by the client to connect to the IDP
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="authentication.clientSecret"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Client Secret</FormLabel>
+                            <FormControl>
+                              <div className="flex">
+                                <Input
+                                  {...field}
+                                  className="mr-2"
+                                  disabled={registration?.registered === true}
+                                />
+                                <Button
+                                  disabled={registration?.registered === true}
+                                  type="button"
+                                  onClick={() =>
+                                    field.onChange(generateRandomString())
+                                  }
+                                >
+                                  Generate
+                                </Button>
+                              </div>
+                            </FormControl>
+                            <FormDescription>
+                              The Client Secret the client uses to connect to
+                              the IDP, this is just a place to store this
+                              information. This field is not shared with any
+                              party and you are free to let it blank
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
               </ScrollArea>
 
               <div className="flex justify-end gap-4 mt-4">
@@ -467,7 +606,11 @@ export default function MCPClientEditDialog({
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={form.formState.isSubmitting}>
+                <Button
+                  data-testid="client-submit-button-witness"
+                  type="submit"
+                  disabled={form.formState.isSubmitting}
+                >
                   {form.formState.isSubmitting
                     ? "Saving..."
                     : client !== undefined
@@ -498,7 +641,11 @@ export default function MCPClientEditDialog({
           })}
           <DialogFooter className="sm:justify-end">
             <DialogClose asChild>
-              <Button type="button" variant="default">
+              <Button
+                data-testid="edit-client-create-button-close-witness"
+                type="button"
+                variant="default"
+              >
                 Close
               </Button>
             </DialogClose>

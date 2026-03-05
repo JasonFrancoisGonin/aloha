@@ -14,7 +14,11 @@ governing permissions and limitations under the Licence.
 */
 
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import { MCPServer } from "@openai/agents";
+import {
+  MCPServer,
+  MCPToolFilterCallable,
+  MCPToolFilterStatic,
+} from "@openai/agents";
 import { getAgentDetail } from "./agents";
 import { getConnectionDetail, sendMCPClientRequest } from "./clients";
 import {
@@ -33,6 +37,7 @@ type MCPCallToolContent = Awaited<ReturnType<MCPServer["callTool"]>>;
 export class AlohaTestbedAgentMCPServer implements MCPServer {
   name: string;
   cacheToolsList: boolean;
+  toolFilter?: MCPToolFilterCallable | MCPToolFilterStatic | undefined;
   private agentInstance: AgentInstance | null = null;
 
   constructor(
@@ -43,6 +48,10 @@ export class AlohaTestbedAgentMCPServer implements MCPServer {
   ) {
     this.name = "AlohaTestbedAgentMCPServer:" + (name || id).trim();
     this.cacheToolsList = false;
+  }
+
+  invalidateToolsCache(): Promise<void> {
+    return Promise.resolve();
   }
 
   async connect(): Promise<void> {
@@ -213,9 +222,15 @@ export class AlohaMCPServer implements MCPServer {
     this.cacheToolsList = false;
     this.name = `Aloha_${type}_MCPServer: ${(name || id).trim()}`;
   }
+
+  invalidateToolsCache(): Promise<void> {
+    return Promise.resolve();
+  }
+
   connect(): Promise<void> {
     return Promise.resolve();
   }
+
   close(): Promise<void> {
     return Promise.resolve();
   }
@@ -275,10 +290,12 @@ export class AlohaMCPServer implements MCPServer {
       },
       CallToolResultSchema
     );
-    return result.content.map((e) => ({
-      type: e.type,
-      text: e.text as string,
-    }));
+    return result.content
+      .filter((c) => c.type == "text")
+      .map((e) => ({
+        type: e.type,
+        text: e.text as string,
+      }));
   }
 }
 

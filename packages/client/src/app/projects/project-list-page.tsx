@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import { deleteProject, getProjectsList } from "../../services/projects";
 import ProjectForm from "./project-form";
 import { usePermissionChecker } from "@/hooks/use-permission-checker";
+import { TagsList } from "@/components/tags-list";
 
 const ROWS_PER_PAGE = 25;
 
@@ -97,7 +98,12 @@ export default function ProjectsListPage() {
           }
         }}
       >
-        <Button variant="destructive" size="icon" disabled={!canManageProjects}>
+        <Button
+          variant="destructive"
+          size="icon"
+          disabled={!canManageProjects}
+          data-testid="delete-project-button-witness"
+        >
           <TrashIcon />
         </Button>
       </ConfirmDialog>
@@ -117,6 +123,7 @@ export default function ProjectsListPage() {
           className="mr-2"
           variant="default"
           disabled={!canManageProjects}
+          data-testid="edit-project-button-witness"
         >
           <PencilIcon />
         </Button>
@@ -131,14 +138,18 @@ export default function ProjectsListPage() {
           setRequestRefresh(requestRefresh + 1);
         }}
       >
-        <Button variant="default" disabled={!canManageProjects}>
+        <Button
+          variant="default"
+          disabled={!canManageProjects}
+          data-testid="new-project-button-witness"
+        >
           <DocumentPlusIcon /> New Project
         </Button>
       </ProjectForm>
     );
   };
   return (
-    <div className="max-w-8xl mx-auto">
+    <div className="max-w-8xl mx-auto" data-testid="project-list-page-witness">
       {/* Page Header */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-6">
@@ -183,7 +194,10 @@ export default function ProjectsListPage() {
               .slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE)
               .map((project) => (
                 <TableRow key={project.id}>
-                  <TableCell className="text-left w-1/12">
+                  <TableCell
+                    className="text-left w-1/12"
+                    data-testid="project-id-witness"
+                  >
                     {project.projectId}
                   </TableCell>
                   <TableCell className="text-left w-1/6">
@@ -193,7 +207,7 @@ export default function ProjectsListPage() {
                     {project.description}
                   </TableCell>
                   <TableCell className="text-left w-1/6">
-                    {project.tags ? project.tags.join(", ") : "-"}
+                    <TagsList item={project} inline={true} />
                   </TableCell>
                   <TableCell className="text-center w-1/6">
                     <EditButton projectId={project.id} />

@@ -1,5 +1,46 @@
-/**/node_modules
-
-/**/dist
-/**/lib
+# Dependencies & build output
+**/node_modules
+**/dist
+**/dist-module
+**/lib
 !/**/src/lib
+**/*.tsbuildinfo
+
+# Database
+mongodb_data
+
+# Secrets & env files
+**/.env
+**/.env.*
+!.env.example
+test_token.txt
+
+# Version control
+.git
+
+# IDE & tooling
+.idea
+.vscode
+.kiro
+**/.nx
+
+# Docker & deployment configs
+Dockerfile
+Dockerfile.public
+docker-compose.yaml
+DOCKER.md
+values.yaml
+
+# Documentation & assets (not needed at runtime)
+docs
+
+# Tests
+packages/e2e-tests
+
+# Misc files
+**/*.log
+**/*.sql
+**/3rd-party-licenses.json
+prometheus.yml
+precommit-license-check.sh
+generate_licenses.md

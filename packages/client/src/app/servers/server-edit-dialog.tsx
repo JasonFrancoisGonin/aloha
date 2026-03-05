@@ -45,6 +45,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { ScrollArea } from "@/components/ui/scroll-area";
 // import { isWithErrorsObject } from "@/services/utils";
 
 const MCPServerOptionsWithTagStringSchema =
@@ -142,96 +143,98 @@ export default function MCPServerEditDialog({
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => {
-                return (
-                  <FormItem>
-                    <FormLabel>Server Name</FormLabel>
-                    <FormControl>
-                      <Input type="text" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Name to assign to this server
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                );
-              }}
-            />
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => {
-                return (
-                  <FormItem>
-                    <FormLabel>Server Description</FormLabel>
-                    <FormControl>
-                      <Input type="text" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      A short description for the server
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                );
-              }}
-            />
-            <FormField
-              control={form.control}
-              name="serverPath"
-              render={({ field }) => {
-                return (
-                  <FormItem>
-                    <FormLabel>Server Path</FormLabel>
-                    <FormControl>
-                      <Input type="text" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Enter the path segment that to reach the server
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                );
-              }}
-            />
+            <ScrollArea className="h-[60vh]">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => {
+                  return (
+                    <FormItem>
+                      <FormLabel>Server Name</FormLabel>
+                      <FormControl>
+                        <Input type="text" {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        Name to assign to this server
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => {
+                  return (
+                    <FormItem>
+                      <FormLabel>Server Description</FormLabel>
+                      <FormControl>
+                        <Input type="text" {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        A short description for the server
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
+              <FormField
+                control={form.control}
+                name="serverPath"
+                render={({ field }) => {
+                  return (
+                    <FormItem>
+                      <FormLabel>Server Path</FormLabel>
+                      <FormControl>
+                        <Input type="text" {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        Enter the path segment that to reach the server
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
 
-            <FormField
-              control={form.control}
-              name="tags"
-              render={({ field }) => {
-                return (
-                  <FormItem>
-                    <FormLabel>Tags (comma-separated)</FormLabel>
-                    <FormControl>
-                      <Input type="text" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      List of tags separated by a comma
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                );
-              }}
-            />
+              <FormField
+                control={form.control}
+                name="tags"
+                render={({ field }) => {
+                  return (
+                    <FormItem>
+                      <FormLabel>Tags (comma-separated)</FormLabel>
+                      <FormControl>
+                        <Input type="text" {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        List of tags separated by a comma
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
 
-            <DialogFooter className="justify-end">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting
-                  ? "Saving..."
-                  : serverId
-                    ? "Edit Server"
-                    : "Create Server"}
-              </Button>
-            </DialogFooter>
+              <DialogFooter className="justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={form.formState.isSubmitting}>
+                  {form.formState.isSubmitting
+                    ? "Saving..."
+                    : serverId
+                      ? "Edit Server"
+                      : "Create Server"}
+                </Button>
+              </DialogFooter>
+            </ScrollArea>
           </form>
         </Form>
       </DialogContent>

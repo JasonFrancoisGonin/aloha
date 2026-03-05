@@ -14,22 +14,32 @@ governing permissions and limitations under the Licence.
 */
 
 import { createInjector } from "typed-inject";
+import { provideCaches } from "./provide-caches";
 import { provideDatabase } from "./provide-database";
+import { provideEnvVars } from "./provide-env-vars";
 import { provideLogger } from "./provide-logger-instance";
 import { provideMcpManager } from "./provide-mcp-manager";
-import { provideEnvVars } from "./provide-env-vars";
-import { provideCaches } from "./provide-caches";
+import { provideOIDC } from "./provide-oidc";
 import { provideSessionStore } from "./provide-session-store";
+
+import { authentication_strategy, logger, schemas } from "aloha-shared";
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { logger, schemas } from "aloha-shared"; // required by the compiler
+const unusedRefsRequiredBuTheCompiler = [
+  logger,
+  schemas,
+  authentication_strategy,
+];
 
 let defaultInjector = provideMcpManager(
   provideSessionStore(
     provideDatabase(
-      provideLogger(provideEnvVars(provideCaches(createInjector())))
+      provideLogger(
+        provideOIDC(provideEnvVars(provideCaches(createInjector())))
+      )
     )
   )
-);
+).provideValue("test", false);
 
 export function replaceInjector(newInjector: typeof defaultInjector) {
   defaultInjector = newInjector;

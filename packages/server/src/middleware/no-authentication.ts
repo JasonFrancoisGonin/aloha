@@ -41,10 +41,10 @@ const noAuthenticationStrategy: authentication_strategy.AuthenticationStrategy =
           permissions: Object.values(authentication_strategy.Permissions),
         });
 
-        logger().info("Created default user for no-authentication strategy");
+        logger().debug("Created default user for no-authentication strategy");
         notAuthenticatedUserId = inserted.id;
       } else {
-        logger().info("Default user for no-authentication strategy exists");
+        logger().debug("Default user for no-authentication strategy exists");
         notAuthenticatedUserId = user.id;
       }
     },
@@ -53,7 +53,7 @@ const noAuthenticationStrategy: authentication_strategy.AuthenticationStrategy =
     async getAuthenticationMiddleware(): Promise<
       RequestHandler | RequestHandler[]
     > {
-      logger().info(
+      logger().warn(
         "Server is starting without authentication. Use it only in development environment."
       );
 
@@ -72,9 +72,12 @@ const noAuthenticationStrategy: authentication_strategy.AuthenticationStrategy =
       return (req: Request, res: Response) => {
         const storeUserSession = () => {
           if (!notAuthenticatedUserId) {
-            res
-              .status(500)
-              .send("No authentication user not present in the database");
+            logger().error(
+              "No authentication user not present in the database"
+            );
+            res.status(401).json({
+              error: "No authentication user not present in the database",
+            });
             return;
           }
           authentication_strategy.storeUserIntoSession(req, {

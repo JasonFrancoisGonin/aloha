@@ -81,7 +81,7 @@ export default function HomePage() {
   }, [permissionChecker]);
 
   return (
-    <div className="">
+    <div className="" data-testid="home-page-witness">
       <div className="text mb-8">
         <div className="flex items-center justify-between mb-2">
           <PageTitle className="text-4xl font-bold text-foreground">

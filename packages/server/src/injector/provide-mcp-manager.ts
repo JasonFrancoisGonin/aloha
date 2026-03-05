@@ -15,7 +15,7 @@ governing permissions and limitations under the Licence.
 
 import { Injector, Scope } from "typed-inject";
 import { ConnectionOptionsRepository } from "../database/repositories/interfaces/connection-options-repository";
-import MCPManager from "../mcp/mcp-manager";
+import MCPManager from "../connections/mcp-manager";
 
 export function provideMcpManager<
   T extends { connectionOptionsRepository: ConnectionOptionsRepository },

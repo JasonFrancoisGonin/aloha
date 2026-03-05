@@ -1,32 +1,122 @@
 version: "3.8"
 
+name: aloha_public
+
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  # MongoDB service
+  mongodb:
+    image: docker.io/mongo:noble
+    container_name: mongodb
+    restart: unless-stopped
+    network_mode: host
+    command: mongod --quiet --logpath /dev/null
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  # Prometheus service
+  prometheus:
+    image: docker.io/prom/prometheus:v3.7.0
+    container_name: prometheus
+    restart: unless-stopped
+    network_mode: host
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=200h"
+
+  # Keycloak service
+  keycloak:
+    image: docker.io/keycloak/keycloak:26.4
+    container_name: keycloak
+    restart: unless-stopped
+    network_mode: host
     ports:
       - "8080:8080"
+      - "9000:9000"
     environment:
-      - MONGODB_URI
-      - CLIENT_SECRET
-      - CAS_URL
-    user: "1001"
+      - JAVA_OPTS='-Dkc.trust.all.certificates=true'
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_HOSTNAME=localhost
     volumes:
-      - ./:/app
-    command: ["node", "/app/packages/server/dist/server.js"]
-    # command: ["bash", "-c", "sleep infinity"]
-    # depends_on:
-    #   - mongodb
-#   mongodb:
-#     image: quay.apps.ocpt.jrc.ec.europa.eu/public/dockerhub/mongo:latest
-#     environment:
-#       - MONGO_INITDB_ROOT_USERNAME
-#       - MONGO_INITDB_ROOT_PASSWORD
-#     ports:
-#       - "27017:27017"
-#     volumes:
-#       - mongodb-data:/data/db
+      - keycloak_truststore:/conf/truststores
+      - keycloak_data:/opt/keycloak/data
+    command:
+      - start-dev
+      - "--tls-hostname-verifier=ANY"
+      - "--truststore-paths=/conf/truststores"
+      - "--health-enabled=true"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
-# volumes:
-#   mongodb-data:
+  # Main application service
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.public
+    container_name: aloha_server
+    restart: unless-stopped
+    network_mode: host
+    ports:
+      - "3000:3000"
+    environment:
+      BOOTSTRAP_ADMIN_USERNAME: admin
+      SECURE_COOKIES: "false"
+      CAS_URL: "<CAS_URL>"
+      AUTHENTICATION_PLUGIN: ""
+      CLIENT_SECRET: "replace me with a random client secret key"
+      SERVER_SECRET: "replace me with a random server secret key"
+      SERVER_PORT: "3000"
+      MONGODB_URI: mongodb://localhost:27017/ALOHA
+      OIDC_ENABLED: "true"
+      OIDC_CODE_REDIRECT_URI: http://localhost:3000/api/oauth2/code/login
+      OIDC_JWKS: |
+        {"keys": [{
+        "kty": "EC",
+        "use": "sig",
+        "alg": "ES512",
+        "kid": "932708a7-8967-4e70-9850-c0882e5dbeb2",
+        "crv": "P-521",
+        "x": "AT_2CRllONk35chbPJL0QXS-FOMmCFFcTFoX4wGil8XVPJGrXdqW_itFo2OI9g-SllYB7WN8gOmvQ3AMC1ExNZfz",
+        "y": "AAEBIcNLtfEFRru04M1OTj5YEy0asqSi3zYHm_K0LXkEfcSWRs4s5e78M2aepyKl-XRT-2x3ZhIQrjXA_ohFysAx",
+        "d": "AbldUHHZu2_DKH4xY9VD5_xAquyfEpCK-LQzBqRVpN0AqqaSQgK06JeieG5s1EcqxBh5UZvI9GASMnvrWKGu-17m"
+        }]}
+      OIDC_CLIENT_ID: aloha
+      OIDC_ISSUER_URL: http://localhost:8080/realms/oidc
+      OIDC_IDENTITY_PROPAGATION_SERVICE_PATH: ""
+      OIDC_USE_IDENTITY_PROPAGATION_SERVICE: "true"
+      OIDC_UNKNOWN_USERS_ALLOW: "true"
+      OIDC_UNKNOWN_USERS_PERMISSIONS: CLIENTS_READ,MCP_PROXY_ACCESS
+      # NODE_TLS_REJECT_UNAUTHORIZED: 0
+
+    depends_on:
+      mongodb:
+        condition: service_started
+        required: true
+      keycloak:
+        condition: service_healthy
+        restart: true
+        required: true
+      prometheus:
+        condition: service_started
+        required: false
+
+volumes:
+  mongodb_data:
+  prometheus_data:
+  keycloak_truststore:
+  keycloak_data:

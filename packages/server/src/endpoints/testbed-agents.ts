@@ -30,19 +30,19 @@ import { z } from "zod";
 import { authorise } from "../middleware/authorise";
 import { stringComparer } from "../utils/sort-comparators";
 import { assertFieldInObject } from "../utils/type-utils";
+import { findCachedUsersById } from "../utils/cache.utils";
 const logger = getLogger("TESTBED-AGENT");
 
 const testbedAgentRepository = () =>
   injector().resolve("testbedAgentRepository");
 const mcpManager = () => injector().resolve("mcpManager");
 const fetchCache = () => injector().resolve("fetchCache");
-const userRepository = () => injector().resolve("userRepository");
 const agentRepository = () => injector().resolve("agentRepository");
 const clientRepository = () =>
   injector().resolve("connectionOptionsRepository");
 
 export function testbedAgentRoutes() {
-  logger().info("Registering testbed agents router");
+  logger().debug("Registering testbed agents router");
 
   const router = crudGenerator<schemas.TestbedAgent>({
     name: "testbedAgent",
@@ -129,7 +129,7 @@ export function testbedAgentRoutes() {
         const visibility = schemas.Visibility.Private;
 
         const user = authentication_strategy.getUserFromSession(req);
-        const loggedUser = await userRepository().findById(user.id);
+        const loggedUser = await findCachedUsersById(user.id);
         if (!loggedUser) {
           throw new HTTPError(500, "Could not resolve the logged user");
         }
@@ -172,7 +172,7 @@ export function testbedAgentRoutes() {
             authentication_strategy.Permissions.Administration
           )
         ) {
-          const loggedUser = await userRepository().findById(user.id);
+          const loggedUser = await findCachedUsersById(user.id);
           if (!loggedUser) {
             throw new HTTPError(500, "Could not resolve the logged user");
           }
@@ -212,18 +212,20 @@ export function testbedAgentRoutes() {
       const { id, cid } = req.params;
 
       const log = logger().child({ serverId: id, connectionId: cid });
-      log.info("Associate connection to Agent");
+      log.debug("Associate connection to Agent");
 
       try {
         if (!id) {
+          log.error("Must provide the id of the Agent to update");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the Agent to update" });
           return;
         }
         if (!cid) {
+          log.error("Must provide the id of the client to connect");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the client to connect" });
           return;
         }
@@ -276,10 +278,10 @@ export function testbedAgentRoutes() {
           res.status(404).json({ error: "Failed to update Agent" });
         }
       } catch (error) {
+        log.error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          log.error(error);
           let errorMessage = "Failed to update Agent";
           if (
             error &&
@@ -305,18 +307,20 @@ export function testbedAgentRoutes() {
       const { id, cid } = req.params;
 
       const log = logger().child({ serverId: id, connectionId: cid });
-      log.info("Disconnect client from Agent");
+      log.debug("Disconnect client from Agent");
 
       try {
         if (!id) {
+          log.error("Must provide the id of the Agent to update");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the Agent to update" });
           return;
         }
         if (!cid) {
+          log.error("Must provide the id of the client to connect");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the client to connect" });
           return;
         }
@@ -344,10 +348,10 @@ export function testbedAgentRoutes() {
           res.status(404).json({ error: "Agent not found" });
         }
       } catch (error) {
+        log.error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          log.error(error);
           res.status(500).json({ error: "Failed to update Agent" });
         }
       }
@@ -362,7 +366,7 @@ export function testbedAgentRoutes() {
       const { cid } = req.params;
 
       const log = logger().child({ connectionId: cid });
-      log.info("Get testbed agents bound to connection");
+      log.debug("Get testbed agents bound to connection");
 
       try {
         if (!cid) {

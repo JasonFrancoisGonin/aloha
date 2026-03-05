@@ -1,8 +1,8 @@
 # ALOHA
 
-Aloha (AI Logical Orchestrator Hub for Agents) is a centralized hub to manage and interconnect data and AI Agents. Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), it enables communication between applications and MCP servers, enhancing tool discoverability and interoperability.
+Aloha (AI Logical Orchestrator Hub for Agents) is a centralized hub to manage and interconnect data and AI Agents. Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) and [Agent-to-Agent (A2A) protocol](https://github.com/a2a-js/sdk), it enables communication between applications, MCP servers, and AI agents, enhancing tool discoverability and interoperability.
 
-ALOHA provides out-of-the-box functionality to test MCP servers and run demo agents directly in your browser.
+ALOHA provides out-of-the-box functionality to test MCP servers, connect A2A agents, and run demo agents directly in your browser.
 
 [![Homepage](docs/assets/homepage.png)](docs/assets/homepage.png)
 
@@ -15,17 +15,25 @@ ALOHA provides out-of-the-box functionality to test MCP servers and run demo age
 - Supported authentication methods:
   - Basic authentication
   - Bearer token
-  - OAuth2 (coming soon)
-  - Custom plugins (extendable architecture)
+  - OpenID Connect
 
 [![MCP Clients page](docs/assets/MCP_clients.gif)](docs/assets/MCP_clients.gif)
 
 ---
 
-### Proxy MCP Servers
+### A2A Agent Integration
+
+- Register and manage A2A-compatible agents
+- Send tasks to remote agents and receive streaming responses
+- All agents act as MCP servers for tool access
+- Assign MCP clients to agents through the UI
+
+---
+
+### Proxy Servers with Identity Propagation
 
 - Easily deploy proxy servers to simplify connections between agents/applications and tools
-- Single endpoint management with identity propagation
+- Single endpoint management with identity propagation (for OpenID Connect clients)
 - Focus on writing only the essential code
 
 [![MCP Servers page](docs/assets/MCP_servers.gif)](docs/assets/MCP_servers.gif)
@@ -35,9 +43,15 @@ ALOHA provides out-of-the-box functionality to test MCP servers and run demo age
 ### Agent Development
 
 - Run agentic loops directly in your browser using OpenAI-compatible endpoints
-- Test MCP server performance with agent workflows
+- Test MCP server and A2A agent performance with agent workflows
 
 [![MCP Agents page](docs/assets/MCP_agent.gif)](docs/assets/MCP_agent.gif)
+
+---
+
+## Documentation
+
+For detailed user guides and platform documentation, see the [User Manual](docs/introduction.md).
 
 ---
 
@@ -65,7 +79,14 @@ pnpm lerna run start
 pnpm lerna run dev
 ```
 
-### 2. Standalone Packages
+### 2. Docker Compose
+
+```bash
+# Start all services with Docker Compose
+docker-compose up
+```
+
+### 3. Standalone Packages
 
 First, build the shared packages, then run each package individually:
 
@@ -130,7 +151,23 @@ pnpm lerna run dev --scope client
 
 ## Authentication System
 
-ALOHA's authentication is plugin-based. Implement the `AuthenticationStrategy` interface from `aloha-shared` to create custom auth providers.
+ALOHA supports multiple authentication methods:
+
+- **Plugin-based authentication** - Implement the `AuthenticationStrategy` interface from `aloha-shared` to create custom auth providers
+- **OpenID Connect** - Built-in support for OIDC providers like Keycloak with identity propagation
+
+### OpenID Connect Configuration
+
+When using OpenID Connect, configure these environment variables:
+
+| Variable                                    | Description                                      |
+| ------------------------------------------- | ------------------------------------------------ |
+| `OIDC_ENABLED`                              | Enable OIDC authentication                       |
+| `OIDC_ISSUER_URL`                           | OIDC provider issuer URL (e.g., Keycloak realm) |
+| `OIDC_CLIENT_ID`                            | OIDC client identifier                           |
+| `OIDC_JWKS`                                 | JSON Web Key Set for token validation            |
+| `OIDC_IDENTITY_PROPAGATION_SERVICE_PATH`    | Path to identity propagation service             |
+| `OIDC_IDENTITY_PROPAGATION_REGISTRAR_PATH`  | Path to client registrar service                 |
 
 ### Example Plugin Implementation
 

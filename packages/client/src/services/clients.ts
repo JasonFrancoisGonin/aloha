@@ -31,11 +31,37 @@ export async function getConnectionList() {
   const response = await customFetch("Get clients list", `${apiClientsUrl}/`);
   const data: endpoints_schemas.MCPConnectionsList = await response.json();
   return data.map((connection) =>
-    safeParseWithErrors(
-      connection,
-      endpoints_schemas.MCPConnectionStatusSchema
-    )
+    safeParseWithErrors(connection, endpoints_schemas.MCPConnectionStatusSchema)
   );
+}
+
+export async function unregisterWithIdentityPropagationService(id: string) {
+  await customFetch(
+    "Unregistering with IDP server",
+    `${apiClientsUrl}/${id}/unregisterWithIdentityPropagationService`,
+    { method: "POST" }
+  );
+}
+
+export async function registerWithIdentityPropagationService(id: string) {
+  await customFetch(
+    "Registering with IDP server",
+    `${apiClientsUrl}/${id}/registerWithIdentityPropagationService`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+export async function isConnectionRegisteredWithIdentityPropagationService(
+  id: string
+) {
+  const response = await customFetch(
+    "Get client IDP registration status",
+    `${apiClientsUrl}/${id}/isRegisteredInIdentityPropagationService`
+  );
+  const data = await response.json();
+  return z.object({ registered: z.boolean() }).parse(data);
 }
 
 export async function getConnectionDetail(id: string) {
@@ -116,7 +142,8 @@ export function createConnection(
 
 export async function editConnection(
   id: string,
-  connectionOptions: endpoints_schemas.MCPConnectionOptionsCreate
+  connectionOptions: endpoints_schemas.MCPConnectionOptionsCreate &
+    Partial<Pick<schemas.VisibilityInterface, "visibility">>
 ) {
   await customFetch("Edit connection", `${apiClientsUrl}/${id}`, {
     method: "POST",

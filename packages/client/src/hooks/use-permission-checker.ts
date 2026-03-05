@@ -62,6 +62,11 @@ export function usePermissionChecker(): PermissionChecker {
       has(authentication_strategy.Permissions.Administration),
     hasOwnership,
     hasVisibility: (obj) => {
+      // Administrators have READ access to all objects
+      if (has(authentication_strategy.Permissions.Administration)) {
+        return true;
+      }
+
       if (hasVisibility(obj, schemas.Visibility.Public)) return true;
       if (hasVisibility(obj, schemas.Visibility.Private) && hasOwnership(obj))
         return true;

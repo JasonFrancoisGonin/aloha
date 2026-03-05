@@ -19,7 +19,7 @@ import { getLogger } from "../injector/provide-logger";
 
 const logger = getLogger("AUTHORISE");
 
-let authPlugins: authentication_strategy.AuthenticationStrategy[];
+let authPlugins: authentication_strategy.AuthenticationStrategy[] = [];
 
 export function getAuthPlugins() {
   return authPlugins;
@@ -34,7 +34,7 @@ export function setAuthPlugins(
 export function authorise(requiredPermissions?: string[]): RequestHandler {
   if (requiredPermissions === undefined) {
     return (_req, _res, next) => {
-      logger().info("No permission to check, pass to next RequestHandler");
+      logger().debug("No permission to check, pass to next RequestHandler");
       next();
     };
   }
@@ -53,7 +53,7 @@ export function authorise(requiredPermissions?: string[]): RequestHandler {
       let check: boolean = false;
 
       if (requiredPermissions.length === 0) {
-        log.info("No permission to check, pass to next RequestHandler");
+        log.debug("No permission to check, pass to next RequestHandler");
         return next();
       }
 
@@ -62,8 +62,8 @@ export function authorise(requiredPermissions?: string[]): RequestHandler {
       for (const p of authPlugins) {
         check = await p.checkPermissions(user, requiredPermissions);
         if (check) {
-          const info = await p.getInfo();
-          log.info({ provider: info.provider }, "Check passed");
+          // const info = await p.getInfo();
+          // log.debug({ provider: info.provider }, "Check passed");
           break;
         }
       }

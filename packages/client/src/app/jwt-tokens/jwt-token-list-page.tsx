@@ -68,7 +68,11 @@ export default function JWTTokensListPage() {
             }
           }}
         >
-          <Button size="icon" variant="destructive">
+          <Button
+            size="icon"
+            variant="destructive"
+            data-testid="disable-token-button-witness"
+          >
             <TrashIcon />
           </Button>
         </ConfirmDialog>
@@ -78,7 +82,7 @@ export default function JWTTokensListPage() {
   );
 
   return (
-    <>
+    <div data-testid="jwt-token-list-page-witness">
       <div className="flex justify-between items-center mb-4">
         <PageTitle>JWT access tokens</PageTitle>
         <JWTCreationForm
@@ -86,16 +90,17 @@ export default function JWTTokensListPage() {
             setRequestRefreshList(requestRefreshList + 1);
           }}
         >
-          <Button>
+          <Button data-testid="new-token-button-witness">
             <DocumentPlusIcon />
             New JWT token
           </Button>
         </JWTCreationForm>
       </div>
       <p className="mb-4">
-        You can use this tokens to connect to Aloha using Machine to Machine
-        communication (for example from an Agent)
+        Use these tokens to connect to Aloha via machine‑to‑machine
+        communication (e.g., from an agent).
       </p>
+
       <div className="flex flex-wrap gap-8">
         <Table className="w-full">
           <TableCaption>JWT Tokens list</TableCaption>
@@ -116,43 +121,45 @@ export default function JWTTokensListPage() {
                 </TableCell>
               </TableRow>
             )}
-            {tokens
-              .sort(
-                (a, b) =>
-                  a.expirationDate.getTime() - b.expirationDate.getTime()
-              )
-              .slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE)
-              .map((token) => (
-                <TableRow key={token.id}>
-                  <TableCell
-                    className={token.disabled ? "italic text-gray-600" : ""}
-                  >
-                    {token.projectName}
-                  </TableCell>
-                  <TableCell
-                    className={token.disabled ? "italic text-gray-600" : ""}
-                  >
-                    {token.creatorName}
-                  </TableCell>
-                  <TableCell
-                    className={token.disabled ? "italic text-gray-600" : ""}
-                  >
-                    {format(token.expirationDate, "yyyy-MM-dd")}
-                  </TableCell>
-                  <TableCell
-                    className={`text-sm opacity-70 mb-2 ${token.disabled ? "italic text-gray-600" : ""}`}
-                  >
-                    {token.permissions.join(", ")}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {!token.disabled ? (
-                      <CancelTokenButton tokenId={token.id} />
-                    ) : (
-                      <span className="italic text-gray-600">DISABLED</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+            {!isLoading &&
+              tokens
+                .sort(
+                  (a, b) =>
+                    a.expirationDate.getTime() - b.expirationDate.getTime()
+                )
+                .slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE)
+                .map((token) => (
+                  <TableRow key={token.id}>
+                    <TableCell
+                      className={token.disabled ? "italic text-gray-600" : ""}
+                      data-testid="token-project-witness"
+                    >
+                      {token.projectName}
+                    </TableCell>
+                    <TableCell
+                      className={token.disabled ? "italic text-gray-600" : ""}
+                    >
+                      {token.creatorName}
+                    </TableCell>
+                    <TableCell
+                      className={token.disabled ? "italic text-gray-600" : ""}
+                    >
+                      {format(token.expirationDate, "yyyy-MM-dd")}
+                    </TableCell>
+                    <TableCell
+                      className={`text-sm opacity-70 mb-2 ${token.disabled ? "italic text-gray-600" : ""}`}
+                    >
+                      {token.permissions.join(", ")}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {!token.disabled ? (
+                        <CancelTokenButton tokenId={token.id} />
+                      ) : (
+                        <span className="italic text-gray-600">DISABLED</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
           </TableBody>
         </Table>
       </div>
@@ -173,6 +180,6 @@ export default function JWTTokensListPage() {
           </Button>
         </div>
       )}
-    </>
+    </div>
   );
 }

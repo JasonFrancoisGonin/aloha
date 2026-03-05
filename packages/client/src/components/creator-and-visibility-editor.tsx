@@ -27,6 +27,8 @@ import { UserContext } from "@/context/contexes";
 import { usePermissionChecker } from "@/hooks/use-permission-checker";
 // import { Badge } from "./ui/badge";
 import { UserIcon, EyeIcon, PencilIcon } from "@heroicons/react/16/solid";
+import { getProjectsList } from "@/services/projects";
+import { isDefined } from "@/utils/type-utils";
 
 type Props = {
   item: (
@@ -67,22 +69,13 @@ export function CreatorAndVisibilityEditor({
   setVisibilityService,
   onAccept,
 }: Props) {
+  const [projects, setProjects] = useState<schemas.ProjectWithId[]>([]);
+
   const permissionCheker = usePermissionChecker();
   const loggedUser = useContext(UserContext);
   const [creatorUser, setCreatorUser] = useState<schemas.UserWithId | null>(
     null
   );
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      if (item.creator) {
-        const user = await getUserDetail(item.creator);
-        setCreatorUser(user);
-      }
-    };
-
-    fetchUser();
-  }, [item, item.creator]);
 
   const canSeePermissionBox = useMemo(() => {
     return (
@@ -91,6 +84,27 @@ export function CreatorAndVisibilityEditor({
         permissionCheker.hasOwnership(item))
     );
   }, [item, permissionCheker]);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (item.creator && canSeePermissionBox) {
+        if (item.creator === loggedUser?.id) {
+          setCreatorUser({
+            id: loggedUser.id,
+            userId: loggedUser.userId,
+            fullName: loggedUser.displayName,
+            permissions: loggedUser.permissions,
+            projects: loggedUser.projects.map((p) => p.id),
+          });
+        } else {
+          const user = await getUserDetail(item.creator);
+          setCreatorUser(user);
+        }
+      }
+    };
+
+    fetchUser();
+  }, [canSeePermissionBox, item, item.creator, loggedUser]);
 
   const canEditCreator = useMemo(() => {
     return loggedUser?.permissions.includes(
@@ -106,13 +120,23 @@ export function CreatorAndVisibilityEditor({
     );
   }, [item, loggedUser?.id, setVisibilityService]);
 
+  useEffect(() => {
+    getProjectsList().then((projects) => {
+      const itemProjects = (item.projects || [])
+        .map((e) => projects.find((p) => p.id === e))
+        .filter((e) => isDefined(e));
+
+      setProjects(itemProjects);
+    });
+  }, [item, item.projects]);
+
   if (!canSeePermissionBox) return null;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
-          Ownership & Visibility
+          Ownership & Access
         </h3>
       </div>
 
@@ -128,11 +152,14 @@ export function CreatorAndVisibilityEditor({
                 Owner
               </dt>
               <dd className="text-sm font-medium text-gray-900">
-                {creatorUser?.fullName ?? (
-                  <span className="text-red-600 font-semibold">
-                    Unknown user
-                  </span>
-                )}
+                {creatorUser?.fullName ??
+                  (permissionCheker.isAdministrator() ? (
+                    <span className="text-red-600 font-semibold">
+                      Unknown user
+                    </span>
+                  ) : (
+                    <span className="text-gray-500 italic">Another user</span>
+                  ))}
               </dd>
             </div>
           </div>
@@ -144,7 +171,10 @@ export function CreatorAndVisibilityEditor({
               setCreatorService={setCreatorService}
               onAccept={onAccept}
               trigger={
-                <button className="flex items-center gap-1 px-2 py-2 text-xs font-medium bg-blue-100 rounded-md transition-colors duration-150">
+                <button
+                  data-testid="edit-owner-button-witness"
+                  className="flex items-center gap-1 px-2 py-2 text-xs font-medium bg-blue-100 rounded-md transition-colors duration-150"
+                >
                   <PencilIcon className="w-3 h-3" />
                   Edit
                 </button>
@@ -162,10 +192,30 @@ export function CreatorAndVisibilityEditor({
             <div className="flex items-center gap-2">
               <div>
                 <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Visibility
+                  Access
                 </dt>
                 <dd className="text-sm font-medium text-gray-900">
-                  {capitalize(item.visibility)}
+                  {item.disabled ? (
+                    <span
+                      className="text-red-600"
+                      data-testid="visibility-disabled-witness"
+                    >
+                      Disabled
+                    </span>
+                  ) : (
+                    <span
+                      className="text-green-600"
+                      data-testid="visibility-disabled-witness"
+                    >
+                      Enabled
+                    </span>
+                  )}
+                  ,{" "}
+                  {item.visibility !== schemas.Visibility.Managed &&
+                    capitalize(item.visibility)}
+                  {item.visibility === schemas.Visibility.Managed &&
+                    projects &&
+                    projects.map((e) => e.name).join(", ")}
                 </dd>
               </div>
             </div>
@@ -179,10 +229,14 @@ export function CreatorAndVisibilityEditor({
                 creator: item?.creator || "",
                 visibility: item.visibility || schemas.Visibility.Private,
                 projects: item.projects,
+                disabled: item.disabled,
               }}
               onAccept={onAccept}
               trigger={
-                <button className="flex items-center gap-1 px-2 py-2 text-xs font-medium bg-blue-100 rounded-md transition-colors duration-150">
+                <button
+                  data-testid="visibility-edit-button-witness"
+                  className="flex items-center gap-1 px-2 py-2 text-xs font-medium bg-blue-100 rounded-md transition-colors duration-150"
+                >
                   <PencilIcon className="w-3 h-3" />
                   Edit
                 </button>

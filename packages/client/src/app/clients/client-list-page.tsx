@@ -35,6 +35,9 @@ import { getConnectionList } from "../../services/clients";
 import MCPClientEditDialog from "./client-edit-dialog";
 import { WithErrors } from "@/services/utils";
 import { useService } from "@/hooks/useService";
+import Loading from "@/components/loading";
+import { TagsList } from "@/components/tags-list";
+import { CardHeaderConnectionIndicator } from "@/components/card-header-connection-indicator";
 
 const PING_TIMEOUT = 5000;
 
@@ -73,7 +76,7 @@ export default function MCPClientsListPage() {
   );
 
   return (
-    <div className="max-w-8xl mx-auto">
+    <div data-testid="client-list-page-witness" className="max-w-8xl mx-auto">
       {/* Page Header */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-6">
@@ -102,31 +105,35 @@ export default function MCPClientsListPage() {
             <Card
               key={c.id}
               onClick={() => navigate(`/clients/${c.id}`)}
-              className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl"
+              className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl flex flex-col h-full"
             >
               <CardHeader className="pb-4">
-                <CardTitle className="flex justify-between items-center">
-                  <span className="text-lg font-semibold text-gray-900 truncate">
+                <CardTitle className="flex justify-between items-center truncate gap-3">
+                  <span className="text-lg font-semibold text-gray-900 truncate min-w-0 flex-1">
                     {c.name}
                   </span>
-                  <span
-                    className={`w-3 h-3 rounded-full ${c.isConnected ? "bg-green-500" : "bg-red-500"} ring-2 ${c.isConnected ? "ring-green-200" : "ring-red-200"}`}
-                    title={c.isConnected ? "Connected" : "Disconnected"}
-                  ></span>
+                  <CardHeaderConnectionIndicator value={c} />
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-gray-600 mb-4">
+              <CardContent className="text-sm text-gray-600 mb-4 flex-grow ">
                 {"isError" in c && (
                   <p className="text-red-600 font-medium mb-2">
                     Error: Connection issue
                   </p>
                 )}
+
                 <p className="line-clamp-3">
                   {c.description || "No description provided"}
                 </p>
+                <TagsList item={c} inline={true}></TagsList>
               </CardContent>
               <CardFooter className="border-t border-gray-100 pt-4">
-                {c.isConnected ? (
+                {c.disabled ? (
+                  <div className="text-sm text-gray-600 flex items-center">
+                    <span className="w-2 h-2 bg-gray-500 rounded-full mr-2 animate-pulse"></span>
+                    Client disabled
+                  </div>
+                ) : c.isConnected ? (
                   <div className="flex items-center justify-between w-full text-sm">
                     <div className="flex items-center space-x-3">
                       <div className="flex items-center">
@@ -150,7 +157,7 @@ export default function MCPClientsListPage() {
                 ) : (
                   <div className="text-sm text-red-600 flex items-center">
                     <span className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></span>
-                    Server offline
+                    Client offline
                   </div>
                 )}
               </CardFooter>
@@ -159,12 +166,7 @@ export default function MCPClientsListPage() {
       </div>
 
       {/* Loading State */}
-      {loading && (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-          <p className="ml-4 text-gray-600">Loading clients...</p>
-        </div>
-      )}
+      {loading && <Loading message="Loading clients..." />}
 
       {/* Empty State */}
       {!loading &&

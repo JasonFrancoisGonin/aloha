@@ -34,7 +34,6 @@ import {
 import {
   AgentInstance,
   AgentInstanceEvent,
-  agentInstanceMergeEvents,
   createAgentInstance,
   CustomAgentEvent,
   getModelsForEndpoint,
@@ -43,16 +42,15 @@ import {
   stopAgentInstanceRun,
   updateTestbedAgent,
 } from "@/services/testbed-agents";
+import { transformTestbedEvents } from "@/utils/testbed-event-transformer";
 import { isWithErrorsObject } from "@/services/utils";
 import { PlayIcon } from "@heroicons/react/24/outline";
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import { endpoints_schemas } from "aloha-shared";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { TestbedAgentEvent } from "./testbed-agent-event";
 import { Textarea } from "@/components/ui/textarea";
-
-let events: Array<AgentInstanceEvent | CustomAgentEvent> = [];
 
 export default function TestbedAgentRunDialog({
   agentId,
@@ -61,8 +59,9 @@ export default function TestbedAgentRunDialog({
   agentId: string;
   onAgentChange: () => void;
 }) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_, forceUpdate] = useState(-1);
+  const [events, setEvents] = useState<
+    Array<AgentInstanceEvent | CustomAgentEvent>
+  >([]);
   const [agentInstance, setAgentInstance] = useState<AgentInstance | null>(
     null
   );
@@ -78,9 +77,10 @@ export default function TestbedAgentRunDialog({
   const [model, setModel] = useState<string>("");
 
   const updateEvents = (event: AgentInstanceEvent | CustomAgentEvent) => {
-    events.push(event);
-    forceUpdate(Math.random());
+    setEvents((prev) => [...prev, event]);
   };
+
+  const displayEvents = useMemo(() => transformTestbedEvents(events), [events]);
 
   useEffect(() => {
     if (!agentId) {
@@ -88,7 +88,7 @@ export default function TestbedAgentRunDialog({
     }
 
     if (dialogOpen) {
-      events = [];
+      setEvents([]);
       setIsGenerating(false);
       setInput("");
       getTestbedAgentDetail(agentId)
@@ -108,7 +108,6 @@ export default function TestbedAgentRunDialog({
               }
             );
           } else {
-            console.log("Sta cippa");
             setAgentDetail(null);
             setSystemPrompt("");
             setModel("");
@@ -292,7 +291,7 @@ export default function TestbedAgentRunDialog({
             </div>
           )}
 
-          {events.length === 0 ? (
+          {displayEvents.length === 0 ? (
             <>
               <form
                 onSubmit={onSubmit}
@@ -346,7 +345,7 @@ export default function TestbedAgentRunDialog({
                     name="system_prompt"
                     value={systemPrompt}
                     onChange={(e) => setSystemPrompt(e.target.value)}
-                    className="grow"
+                    className="grow max-h-[16em]"
                   />
                 </div>
               </form>
@@ -355,7 +354,7 @@ export default function TestbedAgentRunDialog({
             <>
               <ChatMessageList className="!h-[60vh]">
                 {agentInstance &&
-                  agentInstanceMergeEvents(events).map((event) => {
+                  displayEvents.map((event) => {
                     return <TestbedAgentEvent event={event} key={event.id} />;
                   })}
               </ChatMessageList>

@@ -17,6 +17,7 @@ import path from "path";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import checker from "vite-plugin-checker";
 
 function tryParse(number?: string) {
   try {
@@ -32,6 +33,18 @@ function tryParse(number?: string) {
 // https://vite.dev/config/
 export default defineConfig(() => {
   const env = loadEnv("", process.cwd(), "");
+
+  const runIntegrationTests = env.INTEGRATION_TESTS !== undefined;
+
+  const plugins = [react(), tailwindcss()];
+
+  if (!runIntegrationTests) {
+    plugins.push([checker({ typescript: true })]);
+  }
+
+  const testToInclude = runIntegrationTests
+    ? ["./test/integration-tests/*.spec.ts"]
+    : ["./src/**/*.spec.tsx", "./src/**/*.spec.ts"];
 
   let proxy_url = env.API_URL;
   if (!proxy_url) {
@@ -53,21 +66,46 @@ export default defineConfig(() => {
   }
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins,
 
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
+        "@e2e": path.resolve(__dirname, "./test"),
       },
     },
 
     server: {
-      port: tryParse(env.VITE_SERVER_PORT),
+      ...(env.PORT
+        ? { port: parseInt(env.PORT, 10) }
+        : {
+            port: tryParse(env.VITE_SERVER_PORT),
+          }),
       proxy: {
         "^/api": {
           target: proxy_url,
         },
       },
+    },
+
+    test: {
+      chaiConfig: {
+        truncateThreshold: 500,
+      },
+      globals: true,
+      environment: runIntegrationTests ? "node" : "jsdom",
+      include: testToInclude,
+      coverage: {
+        reporter: ["text", "json", "html"],
+      },
+      reporters: ["verbose"],
+      // setupFiles: [],
+      ...(runIntegrationTests
+        ? {
+            hookTimeout: 300000,
+            testTimeout: 300000,
+          }
+        : {}),
     },
   };
 });

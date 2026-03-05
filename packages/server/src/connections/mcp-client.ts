@@ -1,0 +1,413 @@
+/*
+Copyright (C) 2025 European Union
+ 
+Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the
+European Commission – subsequent versions of the EUPL (the “Licence”);
+You may not use this work except in compliance with the Licence.
+You may obtain a copy of the Licence at:
+* https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12 *
+
+Unless required by applicable law or agreed to in writing, software distributed under
+the Licence is distributed on an “AS IS” basis, WITHOUT WARRANTIES OR CONDITIONS
+OF ANY KIND, either express or implied. See the Licence for the specific language
+governing permissions and limitations under the Licence.
+*/
+
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import {
+  SSEClientTransport,
+  SSEClientTransportOptions,
+} from "@modelcontextprotocol/sdk/client/sse.js";
+import {
+  StreamableHTTPClientTransport,
+  StreamableHTTPClientTransportOptions,
+} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { WebSocketClientTransport } from "@modelcontextprotocol/sdk/client/websocket.js";
+import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import {
+  ClientRequest,
+  Prompt,
+  Resource,
+  ResourceTemplate,
+  Tool,
+} from "@modelcontextprotocol/sdk/types.js";
+import { JsonSchemaValidatorResult } from "@modelcontextprotocol/sdk/validation";
+import { schemas } from "aloha-shared";
+import z from "zod";
+import { getLogger } from "../injector/provide-logger";
+import { TokenSetProvider } from "../middleware/oidc/oidc-support";
+import {
+  hasMessageField,
+  promisedStatus,
+  PromisedStatus,
+} from "../utils/type-utils";
+import { getAdditionalAuthenticationHeaders } from "./auth-utils";
+import { RemoteClient } from "./remote-client";
+
+const logger = getLogger("MCP-CLIENT");
+
+const TIMEOUT_CONNECT_MS = 5000;
+const TIMEOUT_MINUTES = 30;
+const TIMEOUT_MS = TIMEOUT_MINUTES * 60 * 1000;
+
+export default class MCPClient implements RemoteClient {
+  public client: Client;
+
+  public connectionOptions: schemas.MCPBaseConnectionWithId;
+
+  public resources: Resource[] = [];
+  public resourceTemplates: ResourceTemplate[] = [];
+  public prompts: Prompt[] = [];
+  public tools: Tool[] = [];
+
+  protected _isStateful: boolean = false;
+
+  private _lastListRefresh: number = 0;
+
+  // private transport: Transport;
+  private connectPromise: PromisedStatus<boolean> | null = null;
+
+  constructor(
+    serverOptions: schemas.MCPBaseConnectionWithId,
+    public tokenSetProvider: TokenSetProvider | undefined
+  ) {
+    this.connectionOptions = serverOptions;
+    // this.transport= this.constructTransport(serverOptions);
+
+    this.client = this.constructClient();
+  }
+
+  public get isConnected() {
+    return this.connectPromise?.currentStatus() || false;
+  }
+
+  public get isStateful() {
+    return this._isStateful;
+  }
+
+  public get id() {
+    return this.connectionOptions.id;
+  }
+
+  public async connectClient() {
+    const log = logger().child({ clientId: this.connectionOptions.id });
+    if (this.connectionOptions.disabled) {
+      this.connectPromise = promisedStatus(false, Promise.resolve(false));
+    } else {
+      if (this.connectPromise) {
+        return this.connectPromise;
+      }
+
+      let connectTimeoutId: ReturnType<typeof setTimeout> | undefined;
+      const abortController = new AbortController();
+
+      this.connectPromise = promisedStatus(
+        false,
+        Promise.resolve(
+          this.constructTransport(this.connectionOptions, this.tokenSetProvider)
+        )
+          .then((transport) => {
+            log.debug(`Connecting to ` + this.connectionOptions.name);
+
+            const timeoutPromise = new Promise((_, reject) => {
+              connectTimeoutId = setTimeout(() => {
+                abortController.abort();
+                reject(new Error("Timeout error"));
+              }, TIMEOUT_CONNECT_MS);
+            });
+
+            return Promise.race([
+              timeoutPromise,
+              this.client.connect(transport, {
+                signal: abortController.signal,
+              }),
+            ]);
+          })
+          .then(() => {
+            log.debug(
+              `Connected to ${this.connectionOptions.name}, is stateful: ${this.isStateful}`
+            );
+            return true;
+          })
+          .catch(async (err) => {
+            log.debug(hasMessageField(err) ? err.message : err);
+            await this.close();
+            return false;
+          })
+          .finally(() => {
+            clearTimeout(connectTimeoutId);
+          })
+      );
+    }
+
+    return this.connectPromise;
+  }
+
+  public async pingClient() {
+    const isConnected = await this.connectClient();
+    if (!isConnected) {
+      return;
+    }
+    try {
+      await this.client.ping();
+    } catch (error: unknown) {
+      await this.close();
+      logger().child({ connectionId: this.connectionOptions.id }).debug(error);
+      throw error;
+    }
+
+    // Refresh lists every 30s
+    // Servers supporting list_changed notifications will update immediately via constructClient().
+    const now = Date.now();
+    if (now - this._lastListRefresh >= 30_000) {
+      this._lastListRefresh = now;
+      await this.refreshLists();
+    }
+  }
+
+  public async close() {
+    if (this.client) {
+      await this.client.close();
+    }
+    this.connectPromise = null;
+    // if (this.transport) await this.transport.close();
+  }
+
+  public async sendRequest<T extends z.ZodType<unknown>>(
+    request: ClientRequest,
+    schema: T
+  ) {
+    const isConnected = await this.connectClient();
+    const log = logger().child({ clientId: this.connectionOptions.id });
+    if (!isConnected) {
+      log.error("Unable to send MCP request: client is not connected");
+      throw new Error(`Client is not connected`);
+    }
+    const result = await this.client.request(request, schema, {
+      timeout: TIMEOUT_MS,
+    });
+    return result;
+  }
+
+  private async refreshLists() {
+    const log = logger().child({ clientId: this.connectionOptions.id });
+    const capabilities = this.client.getServerCapabilities();
+
+    if (capabilities?.resources) {
+      try {
+        const { resources } = await this.client.listResources();
+        this.resources = resources;
+      } catch (error) {
+        log.debug(error);
+      }
+      try {
+        const { resourceTemplates } = await this.client.listResourceTemplates();
+        this.resourceTemplates = resourceTemplates;
+      } catch (error) {
+        log.debug(error);
+      }
+    }
+
+    if (capabilities?.prompts) {
+      try {
+        const { prompts } = await this.client.listPrompts();
+        this.prompts = prompts;
+      } catch (error) {
+        log.debug(error);
+      }
+    }
+
+    if (capabilities?.tools) {
+      try {
+        const { tools } = await this.client.listTools();
+        this.tools = tools;
+      } catch (error) {
+        log.debug(error);
+      }
+    }
+  }
+
+  private constructClient() {
+    const options = this.connectionOptions;
+    const jsonSchemaValidator: import("@modelcontextprotocol/sdk/validation/index.js").jsonSchemaValidator =
+      {
+        getValidator<T>(
+          schema: import("@modelcontextprotocol/sdk/validation/index.js").JsonSchemaType
+        ) {
+          return (input: unknown) => {
+            const validator = z.fromJSONSchema(
+              schema as z.core.JSONSchema.JSONSchema
+            );
+            if (validator.safeParse(input)) {
+              return {
+                valid: true,
+                data: input as T,
+                errorMessage: undefined,
+              } as JsonSchemaValidatorResult<T>;
+            } else {
+              return {
+                valid: false,
+                data: undefined,
+                errorMessage: `Could not validate the json schema of ${options.name}`,
+              };
+            }
+          };
+        },
+      };
+
+    const client = new Client(
+      {
+        name: "mcp-hub",
+        version: "1.0.0",
+      },
+      {
+        capabilities: {},
+        jsonSchemaValidator,
+        listChanged: {
+          tools: {
+            onChanged: (err, tools) => {
+              if (!err && tools) this.tools = tools;
+            },
+          },
+          prompts: {
+            onChanged: (err, prompts) => {
+              if (!err && prompts) this.prompts = prompts;
+            },
+          },
+          resources: {
+            onChanged: (err, resources) => {
+              if (!err && resources) this.resources = resources;
+            },
+          },
+        },
+      }
+    );
+
+    // Replace Ajv instance before each cacheToolMetadata call so old compiled code can be GC'd
+    // const origCacheToolMetadata = client.cacheToolMetadata.bind(client);
+    // client.cacheToolMetadata = (tools: Tool[]) => {
+    //   self.ajvValidator = new AjvJsonSchemaValidator();
+    //   return origCacheToolMetadata(tools);
+    // };
+
+    return client;
+  }
+
+  private getSSEClientTransportOptions(
+    serverOptions: schemas.MCPBaseConnection,
+    tokenSetProvider: TokenSetProvider | undefined
+  ): SSEClientTransportOptions {
+    let options: SSEClientTransportOptions = {};
+    if (serverOptions.authentication) {
+      const { additionalHeaders, authProvider } =
+        getAdditionalAuthenticationHeaders(
+          serverOptions.authentication,
+          tokenSetProvider
+        );
+
+      if (additionalHeaders) {
+        options = {
+          ...options,
+          eventSourceInit: {
+            fetch: (url, opts) => {
+              const headers = opts?.headers || {};
+
+              return global.fetch(url, {
+                ...opts,
+                headers: { ...headers, ...additionalHeaders },
+              });
+            },
+          },
+          requestInit: {
+            headers: additionalHeaders,
+          },
+        };
+      }
+      if (authProvider) {
+        options = {
+          ...options,
+          authProvider,
+        };
+      }
+    }
+    return options;
+  }
+
+  private getStreamableHTTPClientTransportOptions(
+    serverOptions: schemas.MCPBaseConnection,
+
+    tokenSetProvider: TokenSetProvider | undefined
+  ): StreamableHTTPClientTransportOptions {
+    let options: StreamableHTTPClientTransportOptions = {};
+
+    if (serverOptions.authentication) {
+      const { additionalHeaders, authProvider } =
+        getAdditionalAuthenticationHeaders(
+          serverOptions.authentication,
+          tokenSetProvider
+        );
+
+      if (additionalHeaders) {
+        options = {
+          ...options,
+          requestInit: {
+            headers: additionalHeaders,
+          },
+        };
+      }
+      if (authProvider) {
+        options = {
+          ...options,
+          authProvider,
+        };
+      }
+    }
+
+    // Add fetch wrapper to detect session headers
+    options.fetch = async (url, init) => {
+      const response = await fetch(url, init);
+      const sessionId = response.headers.get("mcp-session-id");
+      if (sessionId) {
+        this._isStateful = true;
+      }
+      return response;
+    };
+
+    return options;
+  }
+
+  private constructTransport(
+    serverOptions: schemas.MCPBaseConnection,
+    tokenSetProvider: TokenSetProvider | undefined
+  ): Transport {
+    switch (serverOptions.serverProtocol) {
+      case "http": {
+        const streamableOptions = this.getStreamableHTTPClientTransportOptions(
+          serverOptions,
+          tokenSetProvider
+        );
+        return new StreamableHTTPClientTransport(
+          new URL(serverOptions.serverUrl),
+          streamableOptions
+        );
+      }
+      case "websocket":
+        return new WebSocketClientTransport(new URL(serverOptions.serverUrl));
+      case "sse": {
+        const sseOptions = this.getSSEClientTransportOptions(
+          serverOptions,
+          tokenSetProvider
+        );
+        return new SSEClientTransport(
+          new URL(`${serverOptions.serverUrl}/sse`),
+          sseOptions
+        );
+      }
+      default:
+        throw new Error(
+          // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+          `Unsupported transport type: ${serverOptions.serverProtocol}`
+        );
+    }
+  }
+}

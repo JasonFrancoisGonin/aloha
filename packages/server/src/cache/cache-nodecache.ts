@@ -16,6 +16,9 @@ governing permissions and limitations under the Licence.
 import { ApplicationCache } from "./cache";
 import NodeCache from "node-cache";
 
+export const CACHE_STD_TTL = 100;
+export const CACHE_CHECK_PERIOD = 105;
+
 export class Cache<T> implements ApplicationCache<T> {
   private _cache: NodeCache;
   constructor() {

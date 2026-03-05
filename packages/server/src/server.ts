@@ -15,7 +15,7 @@ governing permissions and limitations under the Licence.
 
 import "dotenv/config";
 import { expressSetup } from "./endpoints/express-setup";
-import { mcpServerStartup } from "./mcp/mcp-server-setup";
+import { mcpServerStartup } from "./connections/mcp-server-setup";
 
 import { EventSource } from "eventsource";
 import { createFetch } from "node-fetch-native/proxy";
@@ -35,11 +35,14 @@ class EventSourceCustom extends EventSource {
 }
 
 global.EventSource = EventSourceCustom;
-global.fetch = createFetch({
-  noProxy: process.env.no_proxy
-    ?.split(",")
-    .map((url) => (url.match(/^\d/) ? url : `.${url}`)),
-});
+
+// const noProxyUrls = (process.env.no_proxy || process.env.NO_PROXY || "")
+//   .split(",")
+//   .map((e) => e.trim())
+//   .filter((e) => e.length > 0)
+//   .map((url) => (url.match(/^\d/) ? url : `.${url}`));
+
+global.fetch = createFetch();
 
 // Setup the MCP servers
 await mcpServerStartup();

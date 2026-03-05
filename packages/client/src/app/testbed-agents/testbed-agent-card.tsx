@@ -33,26 +33,24 @@ export function TestbedAgentCard({ agent }: AgentCardProps) {
     <Card
       key={agent.id}
       onClick={() => navigate(`/testbed-agents/${agent.id}`)}
-      className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl h-full"
+      className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl flex flex-col h-full"
     >
       <CardHeader className="pb-4">
-        <CardTitle className="flex justify-between items-center">
-          <CardTitle className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-            <span className="text-lg font-semibold text-gray-900 truncate">
-              {agent.name}
-            </span>
-          </CardTitle>
+        <CardTitle className="flex justify-between items-start truncate gap-3">
+          <span className="text-lg font-semibold text-gray-900 truncate min-w-0 flex-1">
+            {agent.name}
+          </span>
         </CardTitle>
       </CardHeader>
 
       <CardContent className="text-sm text-gray-600 mb-4 flex-grow">
         {"isError" in agent && (
-          <p className="text-red-700 font-bold mb-2">
+          <p className="text-red-600 font-medium mb-2">
             There is an error with this testbed agent
           </p>
         )}
 
-        <p className="mb-2">{agent.description}</p>
+        <p className="line-clamp-3">{agent.description}</p>
       </CardContent>
     </Card>
   );

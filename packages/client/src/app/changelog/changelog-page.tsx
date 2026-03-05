@@ -50,7 +50,7 @@ export default function ChangelogPage() {
   }
 
   return (
-    <div className="">
+    <div className="" data-testid="changelog-page-witness">
       <PageTitle>Changelog</PageTitle>
       {changelogContent?.map((c, i) => (
         <div key={c.version} className="mb-8">

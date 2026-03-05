@@ -38,6 +38,9 @@ const ChatMessageList = React.forwardRef<HTMLDivElement, ChatMessageListProps>(
           ref={scrollRef}
           onWheel={disableAutoScroll}
           onTouchMove={disableAutoScroll}
+          role="log"
+          aria-live="polite"
+          aria-atomic="false"
           {...props}
         >
           <div className="flex flex-col gap-6">{children}</div>

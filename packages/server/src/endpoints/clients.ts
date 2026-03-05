@@ -31,7 +31,10 @@ import { Request, Response } from "express";
 import z from "zod";
 import { injector } from "../injector/injector";
 import { getLogger } from "../injector/provide-logger";
+import MCPClient from "../connections/mcp-client";
 import { authorise } from "../middleware/authorise";
+import { buildTokenSetProviderFromRequest } from "../middleware/oidc/oidc-support";
+import { findCachedUsersById } from "../utils/cache.utils";
 import { stringComparer } from "../utils/sort-comparators";
 import { assertFieldInObject, unknownToString } from "../utils/type-utils";
 import {
@@ -53,12 +56,10 @@ const agentRepository = () => injector().resolve("agentRepository");
 const serverOptionsRepository = () =>
   injector().resolve("serverOptionsRepository");
 
-const userRepository = () => injector().resolve("userRepository");
-
 const logger = getLogger("CLIENTS");
 
 export function clientsRoutes() {
-  logger().info("Registering client router");
+  logger().debug("Registering client router");
 
   const router = crudGenerator({
     name: "client",
@@ -71,11 +72,11 @@ export function clientsRoutes() {
       list: {
         enableCache: false,
         factory: async (req) => {
-          const servers = await clientRepository().findByPattern({});
+          const clients = await clientRepository().findByPattern({});
 
           const permitted = (
             await Promise.all(
-              servers.map(async (server) =>
+              clients.map(async (server) =>
                 (await verifyPermission(server, req, "read")) ? server : null
               )
             )
@@ -85,7 +86,7 @@ export function clientsRoutes() {
 
           const detailedServers: endpoints_schemas.MCPConnectionStatus[] =
             permitted.map(({ id, ...server }) => {
-              const connection = mcpManager().getConnection(id);
+              const connection = mcpManager().getConnection(id, MCPClient);
               return {
                 ...server,
                 id: id,
@@ -113,7 +114,7 @@ export function clientsRoutes() {
             throw new HTTPError(404, "Client not found");
           }
 
-          const connection = mcpManager().getConnection(id);
+          const connection = mcpManager().getConnection(id, MCPClient);
 
           if (!connection) {
             throw new HTTPError(404, "Client not found");
@@ -167,7 +168,7 @@ export function clientsRoutes() {
             authentication_strategy.Permissions.Administration
           )
         ) {
-          const loggedUser = await userRepository().findById(user.id);
+          const loggedUser = await findCachedUsersById(user.id);
           if (!loggedUser) {
             throw new HTTPError(500, "Could not resolve the logged user");
           }
@@ -229,8 +230,7 @@ export function clientsRoutes() {
     authorise([authentication_strategy.Permissions.ClientsWrite]),
     validateRequestBody(
       endpoints_schemas.MCPConnectionOptionsCreateSchema,
-      logger,
-      true
+      logger
     ),
     async (req: Request, res: Response) => {
       res.setHeader("Content-Type", "text/event-stream");
@@ -239,7 +239,7 @@ export function clientsRoutes() {
       res.flushHeaders();
 
       const log = logger().child({ connection: req.body as unknown });
-      log.info("Creating client");
+      log.debug("Creating client");
 
       const sendEvent = (event: string, data: unknown) => {
         return new Promise<void>((resolve, reject) => {
@@ -280,7 +280,7 @@ export function clientsRoutes() {
           return;
         }
         const user = authentication_strategy.getUserFromSession(req);
-        const loggedUser = await userRepository().findById(user.id);
+        const loggedUser = await findCachedUsersById(user.id);
         if (!loggedUser) {
           await handleError("Could not resolve the logged user");
           return;
@@ -304,8 +304,14 @@ export function clientsRoutes() {
           id: newConnection.id,
         });
 
-        // Create a new connection in the MCPManager object
-        const connection = mcpManager().createConnection(newConnection);
+        const tokenSetProvider = injector().resolve(
+          "oidcAlohaTokenSetProvider"
+        );
+
+        const connection = mcpManager().createConnection(
+          newConnection,
+          tokenSetProvider
+        );
         if (connection) {
           await sendEvent("Connecting to the client...", {
             id: newConnection.id,
@@ -332,25 +338,178 @@ export function clientsRoutes() {
   );
 
   router.post(
+    "/:id/unregisterWithIdentityPropagationService",
+    authorise([authentication_strategy.Permissions.ClientsWrite]),
+    async (req, res) => {
+      assertFieldInObject(req.params, "id", z.string());
+      const { id } = req.params;
+
+      const idps = injector().resolve("oidcIdentityPropagationRegistrar");
+      if (!idps) {
+        logger().error("Identity Propagation Service Registrar not found");
+        res
+          .status(500)
+          .json({ error: "Identity Propagation Service Registrar not found" })
+          .end();
+        return;
+      }
+
+      const identityPropagationServiceRegistrar = await idps;
+
+      const client = await clientRepository().findById(id);
+
+      if (!client) {
+        res.status(404).json({ error: "Client not found" }).end();
+        return;
+      }
+
+      if (!(client.authentication?.type === "oidc_client_secret")) {
+        res
+          .status(400)
+          .json({ error: "Client authentication type is not supported" })
+          .end();
+        return;
+      }
+      try {
+        await identityPropagationServiceRegistrar.unregisterClient(
+          client.authentication.clientId
+        );
+        res.status(204).end();
+      } catch (error) {
+        logger().child({ error }).error("Failed to unregister client");
+        res.status(500).json({ error: "Failed to unregister client" });
+      }
+    }
+  );
+  router.post(
+    "/:id/registerWithIdentityPropagationService",
+    authorise([authentication_strategy.Permissions.ClientsWrite]),
+    async (req, res) => {
+      assertFieldInObject(req.params, "id", z.string());
+
+      const { id } = req.params;
+
+      const idps = injector().resolve("oidcIdentityPropagationRegistrar");
+
+      if (!idps) {
+        logger().error("Identity Propagation Service Registrar not found");
+        res
+          .status(500)
+          .json({ error: "Identity Propagation Service Registrar not found" })
+          .end();
+        return;
+      }
+
+      const identityPropagationServiceRegistrar = await idps;
+
+      const client = await clientRepository().findById(id);
+
+      if (!client) {
+        res.status(404).json({ error: "Client not found" }).end();
+        return;
+      }
+
+      if (!(client.authentication?.type === "oidc_client_secret")) {
+        res
+          .status(400)
+          .json({ error: "Client authentication type is not supported" })
+          .end();
+        return;
+      }
+
+      try {
+        await identityPropagationServiceRegistrar.registerClient({
+          client_id: client.authentication.clientId,
+          secret: client.authentication.clientSecret,
+          client_name: client.name,
+          redirect_uris: [],
+          root_url: "",
+        });
+        res.status(204).end();
+      } catch (error) {
+        logger().child({ error }).error("Failed to register client");
+        res.status(500).json({ error: "Failed to register client" });
+      }
+    }
+  );
+  router.get(
+    "/:id/isRegisteredInIdentityPropagationService",
+    authorise([authentication_strategy.Permissions.ClientsRead]),
+    async (req, res) => {
+      assertFieldInObject(req.params, "id", z.string());
+
+      const { id } = req.params;
+
+      const idps = injector().resolve("oidcIdentityPropagationService");
+
+      if (!idps) {
+        logger().error("Identity Propagation Service not found");
+        res
+          .status(500)
+          .json({ error: "Identity Propagation Service not found" })
+          .end();
+        return;
+      }
+
+      const identityPropagationService = await idps;
+
+      const client = await clientRepository().findById(id);
+
+      if (!client) {
+        res.status(404).json({ error: "Client not found" }).end();
+        return;
+      }
+
+      if (!(client.authentication?.type === "oidc_client_secret")) {
+        res
+          .status(400)
+          .json({ error: "Client authentication type is not supported" })
+          .end();
+        return;
+      }
+
+      const clientId = client.authentication.clientId;
+      try {
+        const registeredClient =
+          await identityPropagationService.getClientRegistration(clientId);
+
+        res
+          .json({
+            registered: registeredClient !== undefined,
+          })
+          .end();
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (error) {
+        res
+          .json({
+            registered: false,
+          })
+          .end();
+      }
+    }
+  );
+
+  router.post(
     "/:id/sendMCPClientRequest",
     validateRequestBody(ClientRequestSchema, logger),
-    authorise([authentication_strategy.Permissions.ClientsWrite]),
+    authorise([authentication_strategy.Permissions.ClientsRead]),
     async (req: Request, res: Response) => {
       const { id } = req.params;
       const log = logger().child({ id });
 
       const clientRequest = req.body as ClientRequest;
 
-      log.info("Send MCP Request to client");
+      log.debug("Send MCP Request to client");
 
       if (!id) {
+        log.error("Must provide the id of the client to call");
         res
-          .status(500)
+          .status(400)
           .json({ error: "Must provide the id of the client to call" });
         return;
       }
 
-      const client = mcpManager().getConnection(id);
+      const client = mcpManager().getConnection(id, MCPClient);
       if (!client) {
         res.status(404).json({ error: "Client not found" }).end();
         return;
@@ -369,6 +528,7 @@ export function clientsRoutes() {
 
       const definition = clientDefinition || agentDefinition;
       if (!definition) {
+        log.error("Client/Agent definition not found");
         res
           .status(500)
           .json({ error: "Client/Agent definition not found" })
@@ -409,10 +569,16 @@ export function clientsRoutes() {
           return;
       }
       try {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const response = await client.sendRequest(clientRequest, schema);
-        res.json(response).end();
-        return;
+        const newClient = new MCPClient(
+          client.connectionOptions,
+          buildTokenSetProviderFromRequest(req)
+        );
+        try {
+          const response = await newClient.sendRequest(clientRequest, schema);
+          res.json(response).end();
+        } finally {
+          await newClient.close();
+        }
       } catch (error) {
         log.error(error);
         res
@@ -423,12 +589,22 @@ export function clientsRoutes() {
       }
     }
   );
+
   permissionsManagerGenerator({
     router,
     name: "client",
     repository: clientRepository,
     logger,
     writePermissions: [authentication_strategy.Permissions.ClientsWrite],
+    afterVisibilityChangeCallback: async (id, visibility) => {
+      const connectionOptions =
+        mcpManager().getConnection(id)!.connectionOptions;
+
+      connectionOptions.visibility = visibility.visibility;
+      connectionOptions.disabled = visibility.disabled;
+
+      await mcpManager().reloadConnection(connectionOptions);
+    },
   });
 
   return router;

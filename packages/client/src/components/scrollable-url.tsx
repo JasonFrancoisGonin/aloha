@@ -31,12 +31,12 @@ export function ScrollableUrl({ url, className = "" }: ScrollableUrlProps) {
       if (!url) return;
       await navigator.clipboard.writeText(url);
       setCopied(true);
-      toast.success("URL copied to clipboard");
+      toast.success("Item copied to clipboard");
 
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to copy URL");
+      toast.error("Failed to copy item");
     }
   };
 

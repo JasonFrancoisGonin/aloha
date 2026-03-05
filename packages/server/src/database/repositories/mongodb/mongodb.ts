@@ -14,19 +14,25 @@ governing permissions and limitations under the Licence.
 */
 
 import { Db, MongoClient } from "mongodb";
+import { getLogger } from "../../../injector/provide-logger";
 // import { Character, InformationBlock, User } from "./definitions";
+
+const logger = getLogger("MONGODB");
 
 let client: MongoClient;
 let db: Db;
 
 export function getDatabase(): Db {
   if (db === undefined) {
-    if (!process.env.MONGODB_URI) {
-      throw new Error('Invalid/Missing environment variable: "MONGODB_URI"');
+    logger().info("Connecting to MongoDB");
+    if (!process.env.DB_URI) {
+      throw new Error('Invalid/Missing environment variable: "DB_URI"');
     }
 
-    const uri = process.env.MONGODB_URI;
-    const options = { appName: "devrel.template.nextjs" };
+    const uri = process.env.DB_URI;
+    const options = { appName: "aloha" };
+
+    logger().child({ uri }).info("MongoDB URI");
 
     if (process.env.NODE_ENV === "development") {
       // In development mode, use a global variable so that the value

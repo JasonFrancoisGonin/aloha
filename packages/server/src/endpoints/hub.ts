@@ -23,7 +23,10 @@ import { injector } from "../injector/injector";
 import { authorise } from "../middleware/authorise";
 import { getLogger } from "../injector/provide-logger";
 import { unknownToString } from "../utils/type-utils";
-import { mcpServerShutdown, mcpServerStartup } from "../mcp/mcp-server-setup";
+import {
+  mcpServerShutdown,
+  mcpServerStartup,
+} from "../connections/mcp-server-setup";
 import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
@@ -34,7 +37,7 @@ const startDate = new Date();
 export function hubRouter() {
   const router: Router = express.Router();
 
-  logger().info("Registering hub router");
+  logger().debug("Registering hub router");
 
   // Get information of the connected user
   router.get("/", (_req: Request, res: Response) => {
@@ -96,7 +99,8 @@ export function hubRouter() {
           path.dirname(fileURLToPath(import.meta.url)),
           "../../../../CHANGELOG.md"
         );
-      console.log(changelogPath);
+
+      logger().child({ changelogPath }).debug("Serve changelog");
 
       // Read the changelog file
       const content = await fs.readFile(changelogPath, "utf-8");
@@ -105,7 +109,7 @@ export function hubRouter() {
       res.setHeader("Content-Type", "text/markdown; charset=utf-8");
       res.send(content);
     } catch (error) {
-      console.error("Error serving changelog:", error);
+      logger().error("Error serving changelog:", error);
       res.status(500).send("Error loading changelog");
     }
   });

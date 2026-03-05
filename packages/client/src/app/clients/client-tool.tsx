@@ -55,6 +55,8 @@ export default function MCPClientTool({ tool, clientId, disabled }: Props) {
   const [isToolRunning, setIsToolRunning] = React.useState(false);
   const [toolResult, setToolResult] =
     React.useState<CompatibilityCallToolResult | null>(null);
+  const [descriptionOpen, setDescriptionOpen] = React.useState(false);
+
   const toolResultRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     if (open) {
@@ -74,7 +76,7 @@ export default function MCPClientTool({ tool, clientId, disabled }: Props) {
             <h4 className="font-semibold mb-2">Invalid Tool Result:</h4>
             <JsonView data={toolResult} />
             <h4 className="font-semibold mb-2">Errors:</h4>
-            {parsedResult.error.errors.map((error, idx) => (
+            {parsedResult.error.issues.map((error, idx) => (
               <JsonView data={error} key={idx} />
             ))}
           </>
@@ -109,7 +111,7 @@ export default function MCPClientTool({ tool, clientId, disabled }: Props) {
                 (item.resource?.mimeType?.startsWith("audio/") ? (
                   <audio
                     controls
-                    src={`data:${item.resource.mimeType};base64,${item.resource.blob}`}
+                    src={`data:${item.resource.mimeType};base64,${item.resource.uri}`}
                     className="w-full"
                   >
                     <p>Your browser does not support audio playback</p>
@@ -131,6 +133,7 @@ export default function MCPClientTool({ tool, clientId, disabled }: Props) {
       );
     }
   };
+
   const callTool = async (name: string, params: Record<string, unknown>) => {
     try {
       const response = await sendMCPClientRequest(
@@ -172,15 +175,44 @@ export default function MCPClientTool({ tool, clientId, disabled }: Props) {
         </Button>
       </DialogTrigger>
       {open && (
-        <DialogContent className="min-w-[80vw]">
+        <DialogContent className="min-w-[80vw] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Test {tool.name}</DialogTitle>
             <DialogDescription>
-              {tool.description}. Fill the fields here below and press the
-              button "run"
+              <p>
+                {!!tool.description && tool.description.length > 150 ? (
+                  <>
+                    {descriptionOpen ? (
+                      <>
+                        {tool.description}{" "}
+                        <span
+                          className="text-blue-500 hover:text-blue-800 cursor-pointer underline"
+                          onClick={() => setDescriptionOpen(false)}
+                        >
+                          see less
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {tool.description.slice(0, 150)}...{" "}
+                        <span
+                          className="text-blue-500 hover:text-blue-800 cursor-pointer underline"
+                          onClick={() => setDescriptionOpen(true)}
+                        >
+                          see more
+                        </span>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  tool.description
+                )}
+              </p>
+              <hr className="my-2" />
+              <p>Fill the fields here below and press the button "run"</p>
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[80vh]  overflow-y-auto">
+          <div className="grow overflow-y-auto">
             {Object.entries(tool.inputSchema.properties ?? []).map(
               ([key, value]) => {
                 const prop = value as JsonSchemaType;

@@ -24,6 +24,7 @@ import { endpoints_schemas } from "aloha-shared";
 import { useCallback, useState } from "react";
 import { AgentCard } from "./agent-card";
 import AgentEditDialog from "./agent-edit-dialog";
+import Loading from "@/components/loading";
 
 const PING_TIMEOUT = 5000;
 
@@ -59,7 +60,7 @@ export default function AgentsListPage() {
   );
 
   return (
-    <div className="max-w-8xl mx-auto">
+    <div className="max-w-8xl mx-auto" data-testid="agents-list-page-witness">
       {/* Page Header */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-6">
@@ -89,57 +90,53 @@ export default function AgentsListPage() {
       </div>
 
       {/* Agent Grid */}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {isLoading && (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-            <p className="ml-4 text-gray-600">Loading agents...</p>
-          </div>
-        )}
         {!isLoading &&
           agents
             .filter(filterAgents)
             .map((agent) => <AgentCard key={agent.id} agent={agent} />)}
-
-        {/* Empty State */}
-        {!isLoading && agents.filter(filterAgents).length === 0 && (
-          <div className="text-center py-16 bg-gray-50 rounded-xl">
-            <div className="inline-block p-4 bg-white rounded-full shadow-md mb-4">
-              <svg
-                className="w-12 h-12 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
-            </div>
-            <h3 className="text-xl font-medium text-gray-900 mb-2">
-              No agents found
-            </h3>
-            <p className="text-gray-500 mb-6">
-              {filter
-                ? "No agents match your search criteria"
-                : "There are no agents available at the moment"}
-            </p>
-            <AgentEditDialog
-              agentId={undefined}
-              trigger={
-                <Button>
-                  <DocumentPlusIcon />
-                  New Agent
-                </Button>
-              }
-              onAccept={async () => forceReloadAgents()}
-            />
-          </div>
-        )}
       </div>
+
+      {isLoading && <Loading message="Loading agents..." />}
+      {/* Empty State */}
+      {!isLoading && agents.filter(filterAgents).length === 0 && (
+        <div className="text-center py-16 bg-gray-50 rounded-xl">
+          <div className="inline-block p-4 bg-white rounded-full shadow-md mb-4">
+            <svg
+              className="w-12 h-12 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
+            </svg>
+          </div>
+          <h3 className="text-xl font-medium text-gray-900 mb-2">
+            No agents found
+          </h3>
+          <p className="text-gray-500 mb-6">
+            {filter
+              ? "No agents match your search criteria"
+              : "There are no agents available at the moment"}
+          </p>
+          <AgentEditDialog
+            agentId={undefined}
+            trigger={
+              <Button>
+                <DocumentPlusIcon />
+                New Agent
+              </Button>
+            }
+            onAccept={async () => forceReloadAgents()}
+          />
+        </div>
+      )}
     </div>
   );
 }

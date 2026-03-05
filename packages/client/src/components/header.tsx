@@ -382,6 +382,7 @@ export default function Header() {
 
       {user == null || user.id == authentication_strategy.ANONYMOUS_USER ? (
         <Button
+          data-testid="login-witness"
           variant="ghost"
           className="flex items-center gap-2 text-slate-200 hover:text-slate-100 hover:bg-slate-800/50"
           onClick={() => login()}
@@ -396,7 +397,9 @@ export default function Header() {
               variant="ghost"
               className="flex items-center gap-2 text-slate-200 hover:text-slate-100 hover:bg-slate-800/50"
             >
-              <span className="font-medium">{user?.displayName}</span>
+              <span className="font-medium" data-testid="logged-in-witness">
+                {user?.displayName}
+              </span>
               <UserCircleIcon className="w-5 h-5" />
             </Button>
           </DropdownMenuTrigger>
@@ -412,6 +415,7 @@ export default function Header() {
             <DropdownMenuItem>Settings</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
+              data-testid="logout-witness"
               onClick={() => logout()}
               className="text-red-600 focus:text-red-600"
             >

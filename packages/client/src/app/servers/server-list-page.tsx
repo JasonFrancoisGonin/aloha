@@ -33,6 +33,7 @@ import MCPServerEditDialog from "./server-edit-dialog";
 import { WithErrors } from "@/services/utils";
 import Loading from "@/components/loading";
 import { Cable } from "lucide-react";
+import { TagsList } from "@/components/tags-list";
 
 const PING_TIMEOUT = 3000;
 
@@ -71,7 +72,7 @@ export default function MCPServersListPage() {
   );
 
   return (
-    <div className="max-w-8xl mx-auto">
+    <div className="max-w-8xl mx-auto" data-testid="server-list-page-witness">
       {/* Page Header */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-6">
@@ -107,16 +108,16 @@ export default function MCPServersListPage() {
             <Card
               key={server.id}
               onClick={() => navigate(`/servers/${server.id}`)}
-              className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl"
+              className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl flex flex-col h-full"
             >
               <CardHeader className="pb-4">
-                <CardTitle className="flex justify-between items-center">
-                  <span className="text-lg font-semibold text-gray-900 truncate">
+                <CardTitle className="flex justify-between items-start truncate gap-3">
+                  <span className="text-lg font-semibold text-gray-900 truncate min-w-0 flex-1">
                     {server.name}
                   </span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-gray-600 mb-4">
+              <CardContent className="text-sm text-gray-600 mb-4 flex-grow">
                 {"isError" in server && (
                   <p className="text-red-600 font-medium mb-2">
                     Error: Server issue
@@ -125,11 +126,17 @@ export default function MCPServersListPage() {
                 <p className="line-clamp-3">
                   {server.description || "No description provided"}
                 </p>
+                <TagsList item={server} inline={true} />
               </CardContent>
-              <CardFooter className="border-t border-gray-100 pt-4">
+              <CardFooter className="border-t border-gray-100 pt-4 mt-auto">
                 <div className="flex items-center justify-between w-full text-sm">
                   <div className="flex items-center space-x-3">
-                    {server.connections && server.connections.length ? (
+                    {server.disabled ? (
+                      <div className="text-sm text-gray-600 flex items-center">
+                        <span className="w-2 h-2 bg-gray-500 rounded-full mr-2 animate-pulse"></span>
+                        Server disabled
+                      </div>
+                    ) : server.connections && server.connections.length ? (
                       <p className="flex items-center font-bold">
                         <Cable className="w-4 h-4 mr-1" size={16} />
                         {server.connections.length}

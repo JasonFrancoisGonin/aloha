@@ -45,6 +45,7 @@ import { getAllGenericConnections } from "@/services/testbed-agents";
 import Loading from "@/components/loading";
 import { ScrollableUrl } from "@/components/scrollable-url";
 import { schemas } from "aloha-shared";
+import { TagsList } from "@/components/tags-list";
 
 const PING_TIMEOUT = 5000;
 
@@ -174,8 +175,8 @@ export default function MCPServerDetailPage() {
     <div className="max-w-8xl mx-auto px-4">
       {/* Header Section */}
       <div className="">
-        <div className="flex justify-between items-start mb-6">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-6 gap-4">
+          <div className="flex-1 min-w-0">
             <PageTitle className="mb-2">{serverDetail.name}</PageTitle>
             {serverDetail.description && (
               <p className="text-gray-600 text-lg leading-relaxed max-w-3xl">
@@ -183,17 +184,13 @@ export default function MCPServerDetailPage() {
               </p>
             )}
           </div>
-          <div className="flex flex-shrink-0 ml-6">
+          <div className="flex flex-shrink-0 gap-2 sm:ml-6 self-start">
             <ConfirmDialog
               onClick={() => {
                 return doDeleteServer();
               }}
             >
-              <Button
-                className="mr-2"
-                variant="destructive"
-                disabled={!isTheUserTheOwner}
-              >
+              <Button variant="destructive" disabled={!isTheUserTheOwner}>
                 <TrashIcon />
                 Delete Server
               </Button>
@@ -229,6 +226,7 @@ export default function MCPServerDetailPage() {
           {/* Configuration Panel */}
           <div className="lg:w-1/3">
             {/* Server Path */}
+            <TagsList item={serverDetail} inline={false} />
             <div className="space-y-2 py-4">
               <dt className="text-sm font-semibold uppercase tracking-wide">
                 Server Path
@@ -270,6 +268,25 @@ export default function MCPServerDetailPage() {
               )}
             </div>
           </div>
+
+          <div className="lg:w-2/3 mt-8 lg:mt-0">
+            {serverDetail && serverDetail.disabled && (
+              <div className="flex flex-col items-center justify-center h-64 text-gray-400 bg-gray-50/50 rounded-xl border-2 border-dashed border-gray-200">
+                <div className="w-12 h-12 mb-4 opacity-40">
+                  <svg fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium text-gray-600">
+                  Server is disabled
+                </p>
+                <p className="text-sm text-gray-500 mt-1 text-center">
+                  This server has been disabled, enable it to access to
+                  available resources, prompts and tools
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -297,7 +314,7 @@ export default function MCPServerDetailPage() {
             </div>
 
             <div
-              className={`min-h-40 p-4 rounded-xl border-2 border-dashed transition-all duration-200 ${
+              className={`h-full min-h-40 p-4 rounded-xl border-2 border-dashed transition-all duration-200 ${
                 draggingOver === 1
                   ? "border-blue-400 bg-blue-50/70 shadow-lg scale-[1.02]"
                   : "border-gray-200 bg-gray-50/50 hover:bg-gray-50"
@@ -377,7 +394,7 @@ export default function MCPServerDetailPage() {
                       {isTheUserTheOwner && (
                         <button
                           onClick={() => dissociateClient(connection.id)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all duration-150 opacity-0 group-hover:opacity-100"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all duration-150 group-hover:opacity-100"
                           title="Remove association"
                         >
                           <MinusCircleIcon width={18} />
@@ -401,7 +418,7 @@ export default function MCPServerDetailPage() {
             </div>
 
             <div
-              className={`min-h-40 p-4 rounded-xl border-2 border-dashed transition-all duration-200 ${
+              className={`h-full min-h-40 p-4 rounded-xl border-2 border-dashed transition-all duration-200 ${
                 draggingOver === 2
                   ? "border-gray-400 bg-gray-100 shadow-lg scale-[1.02]"
                   : "border-gray-200 bg-gray-50/30 hover:bg-gray-50/50"
@@ -479,7 +496,7 @@ export default function MCPServerDetailPage() {
                       {isTheUserTheOwner && (
                         <button
                           onClick={() => associateClient(connection.id!)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-all duration-150 opacity-0 group-hover:opacity-100"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-all duration-150 group-hover:opacity-100"
                           title="Associate with server"
                         >
                           <PlusCircleIcon width={18} />

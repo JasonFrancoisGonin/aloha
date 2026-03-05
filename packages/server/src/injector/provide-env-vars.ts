@@ -17,6 +17,9 @@ import "dotenv/config";
 import { Injector } from "typed-inject";
 
 export function provideEnvVars<T>(injector: Injector<T>) {
+  const isProduction =
+    (process.env.NODE_ENV || "development").toLowerCase() === "production";
+
   const SERVER_SECRET = process.env.SERVER_SECRET;
   if (!SERVER_SECRET) {
     throw new Error(
@@ -42,11 +45,8 @@ export function provideEnvVars<T>(injector: Injector<T>) {
   const DEFAULT_JWT_AUTHENTICATION =
     process.env.DEFAULT_JWT_AUTHENTICATION || "true";
 
-  return injector
-    .provideValue(
-      "isProduction",
-      (process.env.NODE_ENV || "development").toLowerCase() === "production"
-    )
+  const newInjector = injector
+    .provideValue("isProduction", isProduction)
     .provideValue(
       "defaultJWTAuthentication",
       DEFAULT_JWT_AUTHENTICATION === "true"
@@ -56,4 +56,6 @@ export function provideEnvVars<T>(injector: Injector<T>) {
     .provideValue("clientSecret", CLIENT_SECRET)
     .provideValue("sessionSecret", SESSION_SECRET)
     .provideValue("sessionMaxAge", SESSION_MAX_AGE);
+
+  return newInjector;
 }

@@ -39,8 +39,14 @@ import { getProjectsList } from "../../services/projects";
 import { deleteUser, getUsersList } from "../../services/users";
 import UserForm from "./user-form";
 import { usePermissionChecker } from "@/hooks/use-permission-checker";
+import { camelCaseToSpaces } from "@/utils/string-utils";
+import { isDefined } from "@/utils/type-utils";
 
 const ROWS_PER_PAGE = 25;
+
+const ALL_PERMISSION_ENTRIES = Object.entries(
+  authentication_strategy.Permissions
+).filter(([, value]) => typeof value === "string");
 
 export default function UsersListPage() {
   const [filter, setFilter] = useState<string>("");
@@ -105,7 +111,12 @@ export default function UsersListPage() {
           }
         }}
       >
-        <Button variant="destructive" size="icon" disabled={!canManageUsers}>
+        <Button
+          variant="destructive"
+          size="icon"
+          disabled={!canManageUsers}
+          data-testid="delete-user-button-witness"
+        >
           <TrashIcon />
         </Button>
       </ConfirmDialog>
@@ -118,7 +129,12 @@ export default function UsersListPage() {
         userId={userId}
         onAccept={async () => setRequestRefresh(requestRefresh + 1)}
       >
-        <Button className="mr-2" size="icon" disabled={!canManageUsers}>
+        <Button
+          className="mr-2"
+          size="icon"
+          disabled={!canManageUsers}
+          data-testid="edit-user-button-witness"
+        >
           <PencilIcon />
         </Button>
       </UserForm>
@@ -131,7 +147,11 @@ export default function UsersListPage() {
         userId={undefined}
         onAccept={async () => setRequestRefresh(requestRefresh + 1)}
       >
-        <Button variant="default" disabled={!canManageUsers}>
+        <Button
+          variant="default"
+          disabled={!canManageUsers}
+          data-testid="new-user-button-witness"
+        >
           <DocumentPlusIcon />
           New User
         </Button>
@@ -154,7 +174,7 @@ export default function UsersListPage() {
   // };
 
   return (
-    <div className="max-w-8xl mx-auto">
+    <div className="max-w-8xl mx-auto" data-testid="user-list-page-witness">
       {/* Page Header */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-6">
@@ -198,7 +218,9 @@ export default function UsersListPage() {
               .slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE)
               .map((user) => (
                 <TableRow key={user.userId}>
-                  <TableCell className="w-1/12">{user.userId}</TableCell>
+                  <TableCell data-testid="user-id-witness" className="w-1/12">
+                    {user.userId}
+                  </TableCell>
                   <TableCell className="whitespace-break-spaces w-1/6">
                     {user.fullName}
                     {user.disabled && (
@@ -209,7 +231,13 @@ export default function UsersListPage() {
                     {user.projects?.join(", ")}
                   </TableCell>
                   <TableCell className="whitespace-break-spaces w-auto">
-                    {user.permissions.join(", ")}
+                    {user.permissions
+                      .map((e) =>
+                        ALL_PERMISSION_ENTRIES.find((v) => v[1] === e)
+                      )
+                      .filter(isDefined)
+                      .map((e) => camelCaseToSpaces(e[0]))
+                      .join(", ")}
                   </TableCell>
                   <TableCell className="text-center w-1/12">
                     <EditButton userId={user.id}></EditButton>

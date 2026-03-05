@@ -2,13 +2,13 @@
 Copyright (C) 2025 European Union
 
 Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the
-European Commission – subsequent versions of the EUPL (the “Licence”);
+European Commission – subsequent versions of the EUPL (the "Licence");
 You may not use this work except in compliance with the Licence.
 You may obtain a copy of the Licence at:
 * https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12 *
 
 Unless required by applicable law or agreed to in writing, software distributed under
-the Licence is distributed on an “AS IS” basis, WITHOUT WARRANTIES OR CONDITIONS
+the Licence is distributed on an "AS IS" basis, WITHOUT WARRANTIES OR CONDITIONS
 OF ANY KIND, either express or implied. See the Licence for the specific language
 governing permissions and limitations under the Licence.
 */
@@ -19,236 +19,177 @@ import {
   ChatBubbleMessage,
 } from "@/components/chat/chat-bubble";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import JsonView from "@/mcp-inspector/JsonView";
-import { AgentInstaceMergedEvent } from "@/services/testbed-agents";
-import { hasMessageField } from "@/utils/type-utils";
-import { DocumentMinusIcon, DocumentPlusIcon } from "@heroicons/react/16/solid";
+import { TestbedDisplayEvent } from "@/utils/testbed-event-transformer";
+import { processSpecialTags } from "@/utils/process-special-tags";
+import { Check, Code, Copy, Loader2 } from "lucide-react";
 import { useState } from "react";
+import TestbedToolCall from "./testbed-tool-call";
+import TestbedToolOutput from "./testbed-tool-output";
+import TestbedLLMStatus from "./testbed-llm-status";
 
 type Props = {
-  event: AgentInstaceMergedEvent;
+  event: TestbedDisplayEvent;
 };
 
-function processSpecialTags(content: string): React.ReactNode {
-  const thinkIdx = content.indexOf("<think>");
-  if (thinkIdx === -1) {
-    return <div className="mb-2 mt-2">{(content || "").trim()}</div>;
-  }
-
-  const thinkEnd = content.indexOf("</think>");
-
-  if (thinkEnd === -1) {
-    return (
-      <div className="text-sm mt-2 mb-2 border-l-2 border-gray-300 pl-4">
-        ... {content.substring(7).trim()}
-      </div>
-    );
-  } else {
-    return (
-      <>
-        <div className="text-sm mt-2 mb-2 border-l-2 border-gray-300 pl-4">
-          ... {content.substring(7, thinkEnd).trim()} ...
-        </div>
-        {processSpecialTags(content.substring(thinkEnd + 7 + 1))}
-      </>
-    );
-  }
-}
-
-function formatEventContent(event: AgentInstaceMergedEvent): React.ReactNode {
-  switch (event.type) {
-    case "error_message":
-      if (hasMessageField(event.content)) {
-        return event.content.message;
-      }
-      return JSON.stringify(event.content, null, 2);
-    case "user_message":
-    case "system_prompt":
-      return event.content;
-    case "llm_response_started":
-      return "LLM start sending response";
-    case "agent_updated":
-      return "Preparing agent to run";
-    case "tool_call_request":
-      if (event.content.rawItem.type === "function_call") {
-        return (
-          <>
-            <div>
-              <i>Type: </i>
-              {event.content.rawItem.type}
-            </div>
-            <div>
-              <i>Name: </i>
-              {event.content.rawItem.name}
-            </div>
-
-            <div>
-              <i>Arguments: </i>
-              {event.content.rawItem.arguments}
-            </div>
-          </>
-        );
-      }
-      break;
-    case "tool_call_output":
-      if (
-        event.content.rawItem.type === "function_call_result" &&
-        event.content.rawItem.output.type === "text"
-      ) {
-        return (
-          <>
-            <div>
-              <i>Result</i>
-            </div>
-            <div>{event.content.rawItem.output.text}</div>
-          </>
-        );
-      }
-      break;
-    case "llm_response_in_progress":
-      return processSpecialTags(event.progress);
-    case "llm_response_done":
-      return (
-        <>
-          {event.content.response.output.map((e) => {
-            return (
-              <>
-                {e.type === "message" ? (
-                  processSpecialTags(
-                    e.content
-                      .filter((v) => v.type === "output_text")
-                      .map((v) => v.text)
-                      .join()
-                  )
-                ) : e.type === "function_call" ? (
-                  <div>
-                    <i>LLM asked to call a tool, see below messages</i>
-                  </div>
-                ) : (
-                  <div>{JSON.stringify(e, null, 2)}</div>
-                )}
-              </>
-            );
-          })}
-        </>
-      );
-  }
-
-  return (
-    <>
-      <div>
-        <i>Unformatted event</i>
-      </div>
-      <div>{JSON.stringify(event, null, 2)}</div>
-    </>
-  );
-}
-
 export function TestbedAgentEvent({ event }: Props) {
-  const [showRaw, setShowRaw] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  let bubbleMessageOtherClassName = "border-1 ";
-  let otherTitleClassName = "";
-  let variant: "received" | "sent" = "received";
+  const getTextContent = (): string => {
+    switch (event.type) {
+      case "user_message":
+      case "system_prompt":
+      case "agent_message":
+        return event.content;
+      case "error":
+        return event.message;
+      default:
+        return "";
+    }
+  };
 
-  let messageType = "";
-  switch (event.type) {
-    case "llm_response_started":
-      bubbleMessageOtherClassName += "border-amber-600";
-      messageType = "LLM response started";
-      break;
-    case "llm_response_done":
-      bubbleMessageOtherClassName += "border-green-600";
-      messageType = "LLM response done";
-      break;
-    case "tool_call_request":
-      bubbleMessageOtherClassName += "border-blue-600";
-      messageType = "Tool call request";
-      break;
-    case "tool_call_output":
-      bubbleMessageOtherClassName += "border-purple-600";
-      messageType = "Tool call output";
-      break;
-    case "llm_response_in_progress":
-      bubbleMessageOtherClassName += "border-yellow-600";
-      messageType = "LLM response in progress";
-      break;
-    case "system_prompt":
-      bubbleMessageOtherClassName = "bg-blue-400";
-      messageType = "System prompt";
-      variant = "sent";
-      break;
-    case "user_message":
-      bubbleMessageOtherClassName = "";
-      messageType = "User Message";
-      variant = "sent";
-      break;
-    case "agent_updated":
-      bubbleMessageOtherClassName += "border-cyan-600";
-      messageType = "Agent updating";
-      break;
-    case "error_message":
-      bubbleMessageOtherClassName += "border-red-600";
-      messageType = "An error occurred";
-      otherTitleClassName = "text-red-600";
-  }
+  const handleCopy = async () => {
+    const text = getTextContent();
+    if (text) {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
-  const formattedEventContent = formatEventContent(event);
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const content = (() => {
+    switch (event.type) {
+      case "user_message":
+      case "system_prompt":
+        return <div className="whitespace-pre-wrap">{event.content}</div>;
+
+      case "agent_message":
+        return (
+          <div>
+            {processSpecialTags(event.content)}
+            {event.streaming && (
+              <Loader2 className="inline-block ml-2 h-4 w-4 animate-spin" />
+            )}
+          </div>
+        );
+
+      case "agent_updated":
+        return <TestbedLLMStatus type={event.type} />;
+
+      case "tool_call":
+        return (
+          <TestbedToolCall
+            name={
+              "name" in event.content.rawItem
+                ? event.content.rawItem.name
+                : "tool"
+            }
+          />
+        );
+
+      case "tool_output":
+        return (
+          <TestbedToolOutput output={JSON.stringify(event.content.output)} />
+        );
+
+      case "error":
+        return (
+          <div className="text-destructive">
+            <div className="font-semibold">Error</div>
+            <div>{event.message}</div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  })();
+
+  const variant: "received" | "sent" =
+    event.type === "user_message" || event.type === "system_prompt"
+      ? "sent"
+      : "received";
+
+  const avatar =
+    event.type === "user_message"
+      ? "👨🏽"
+      : event.type === "error"
+        ? "💀"
+        : event.type === "system_prompt"
+          ? "⚙"
+          : "🤖";
 
   return (
     <ChatBubble variant={variant} className="max-w-full">
-      <ChatBubbleAvatar
-        fallback={
-          event.type === "user_message"
-            ? "👨🏽"
-            : event.type === "error_message"
-              ? "💀"
-              : event.type === "system_prompt"
-                ? "⚙"
-                : "🤖"
-        }
-      />
-      <ChatBubbleMessage
-        variant={variant}
-        className={bubbleMessageOtherClassName}
-      >
-        <div>
-          <b>{event.agentName}</b>
-        </div>
-        <div>
-          <div className={"italic " + otherTitleClassName}>{messageType}</div>
-        </div>
-        <div className="">
-          <div className="wrap-anywhere">{formattedEventContent}</div>
-
-          {"content" in event &&
-            event.type !== "user_message" &&
-            event.type !== "system_prompt" && (
-              <>
-                <div className="mt-2 mb-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowRaw(!showRaw)}
-                  >
-                    {!showRaw && (
-                      <>
-                        <DocumentPlusIcon /> Show raw content
-                      </>
-                    )}
-                    {showRaw && (
-                      <>
-                        <DocumentMinusIcon /> Hide raw content
-                      </>
-                    )}
-                  </Button>
-                </div>
-                {showRaw && (
-                  <div className="wrap-anywhere">
-                    <JsonView data={event.content} />
-                  </div>
+      <ChatBubbleAvatar fallback={avatar} />
+      <ChatBubbleMessage variant={variant}>
+        <div className="flex items-start gap-2">
+          <div className="flex-1">
+            <div className="font-semibold mb-1">{event.agentName}</div>
+            {content}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">
+              {formatTime(event.timestamp)}
+            </span>
+            {getTextContent() && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={handleCopy}
+                aria-label="Copy message"
+              >
+                {copied ? (
+                  <Check className="h-3 w-3" />
+                ) : (
+                  <Copy className="h-3 w-3" />
                 )}
-              </>
+              </Button>
             )}
+            {event.rawEvents && event.rawEvents.length > 0 && (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    aria-label="View raw event data"
+                  >
+                    <Code className="h-3 w-3" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Raw Event Data</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    {event.rawEvents.map((rawEvent, index) => (
+                      <div key={index}>
+                        {event.rawEvents!.length > 1 && (
+                          <div className="text-sm font-semibold mb-2">
+                            Event {index + 1}
+                          </div>
+                        )}
+                        <JsonView data={rawEvent.event} />
+                      </div>
+                    ))}
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
         </div>
       </ChatBubbleMessage>
     </ChatBubble>

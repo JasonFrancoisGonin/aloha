@@ -49,6 +49,7 @@ import { schemas } from "aloha-shared";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { Switch } from "./ui/switch";
 
 type Props = {
   name: string;
@@ -130,13 +131,13 @@ export default function VisibilityEditDialog({
               )
             }
           >
-            <PencilIcon /> Edit Visibility
+            <PencilIcon /> Edit Access
           </Button>
         )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Editing visibility of {name}</DialogTitle>
+          <DialogTitle>Editing Access of {name}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -180,6 +181,32 @@ export default function VisibilityEditDialog({
                 );
               }}
             />
+
+            <FormField
+              control={form.control}
+              name="disabled"
+              render={({ field }) => {
+                return (
+                  <FormItem className="flex flex-row items-center justify-start rounded-lg border p-3 shadow-sm">
+                    <FormControl>
+                      <Switch
+                        checked={!field.value}
+                        onCheckedChange={(e) => field.onChange(!e)}
+                      ></Switch>
+                    </FormControl>
+                    <div className="space-y-0.5">
+                      <FormLabel>Enabled</FormLabel>
+                      <FormDescription>
+                        {field.value === true
+                          ? "This item is disabled and cannot be used"
+                          : "This item is enabled"}
+                      </FormDescription>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
+            />
             {visibility === schemas.Visibility.Managed && (
               <FormField
                 control={form.control}
@@ -217,7 +244,11 @@ export default function VisibilityEditDialog({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
+              <Button
+                data-testid="visibility-edit-submit-button-witness"
+                type="submit"
+                disabled={form.formState.isSubmitting}
+              >
                 {form.formState.isSubmitting ? "Saving..." : "Edit visibility"}
               </Button>
             </DialogFooter>

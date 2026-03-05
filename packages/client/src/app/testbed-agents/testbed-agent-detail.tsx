@@ -160,7 +160,7 @@ export default function TestbedAgentDetailPage() {
   }
 
   const serverConnections = agentDetail.connectionsDetail || [];
-  console.log(serverConnections);
+
   const associatedConnections = serverConnections.map((conn) => conn.name);
   const unassociatedConnections = allConnections.filter(
     (conn) => isDefined(conn.name) && !associatedConnections.includes(conn.name)
@@ -170,16 +170,18 @@ export default function TestbedAgentDetailPage() {
     <div className="max-w-8xl mx-auto px-4">
       {/* Header Section */}
       <div className="">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <PageTitle className="mb-2">{agentDetail.name}</PageTitle>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-6 gap-4">
+          <div className="flex-1 min-w-0">
+            <PageTitle className="flex gap-6 items-center">
+              {agentDetail.name}
+            </PageTitle>
             {agentDetail.description && (
               <p className="text-gray-600 text-lg leading-relaxed max-w-3xl">
                 {agentDetail.description}
               </p>
             )}
           </div>
-          <div className="flex flex-shrink-0 ml-6">
+          <div className="flex flex-shrink-0 gap-2 sm:ml-6 self-start">
             <ConfirmDialog
               onClick={() => {
                 return doDeleteAgent();
@@ -250,7 +252,7 @@ export default function TestbedAgentDetailPage() {
             </div>
 
             <div
-              className={`min-h-40 p-4 rounded-xl border-2 border-dashed transition-all duration-200 ${
+              className={`h-full min-h-40 p-4 rounded-xl border-2 border-dashed transition-all duration-200 ${
                 draggingOver === 1
                   ? "border-blue-400 bg-blue-50/70 shadow-lg scale-[1.02]"
                   : "border-gray-200 bg-gray-50/50 hover:bg-gray-50"
@@ -331,7 +333,7 @@ export default function TestbedAgentDetailPage() {
                       {isTheUserTheOwner && (
                         <button
                           onClick={() => dissociateClient(connection.id)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all duration-150 opacity-0 group-hover:opacity-100"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all duration-150 group-hover:opacity-100"
                           title="Remove association"
                         >
                           <MinusCircleIcon width={18} />
@@ -355,7 +357,7 @@ export default function TestbedAgentDetailPage() {
             </div>
 
             <div
-              className={`min-h-40 p-4 rounded-xl border-2 border-dashed transition-all duration-200 ${
+              className={`h-full min-h-40 p-4 rounded-xl border-2 border-dashed transition-all duration-200 ${
                 draggingOver === 2
                   ? "border-gray-400 bg-gray-100 shadow-lg scale-[1.02]"
                   : "border-gray-200 bg-gray-50/30 hover:bg-gray-50/50"
@@ -433,7 +435,7 @@ export default function TestbedAgentDetailPage() {
                       {isTheUserTheOwner && (
                         <button
                           onClick={() => associateClient(connection.id!)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-all duration-150 opacity-0 group-hover:opacity-100"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-all duration-150 group-hover:opacity-100"
                           title="Associate with server"
                         >
                           <PlusCircleIcon width={18} />

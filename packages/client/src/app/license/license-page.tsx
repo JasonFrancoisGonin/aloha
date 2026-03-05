@@ -308,7 +308,7 @@ EUPL version.
 https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12`;
 
   return (
-    <div className="">
+    <div className="" data-testid="license-page-witness">
       <PageTitle>License</PageTitle>
       {/* prettier-ignore */}
       <pre className="bg-gray-50 p-6 rounded-lg font-mono text-sm whitespace-pre border border-gray-600 grow overflow-auto max-h-screen">

@@ -20,9 +20,11 @@ import { CrudRepository } from "../database/repositories/interfaces/repository-i
 import { VisibilityRepositoryInterface } from "../database/repositories/interfaces/visibility-repository-interface";
 import { injector } from "../injector/injector";
 import { authorise } from "../middleware/authorise";
+import { findCachedUsersById } from "../utils/cache.utils";
 
 const fetchCache = () => injector().resolve("fetchCache");
 const userProjectsCache = () => injector().resolve("userProjectsCache");
+const userRepository = () => injector().resolve("userRepository");
 
 type PermissionType = "read" | "write" | "execute";
 
@@ -67,74 +69,66 @@ type PermissionsOptions<T extends schemas.VisibilityInterface> = {
   repository: () => VisibilityRepositoryInterface<T>;
   logger: () => logger.Logger;
   writePermissions?: authentication_strategy.Permissions[];
+  afterVisibilityChangeCallback?: (id: string, visibility: T) => Promise<void>;
 };
 
-export const validateRequestBody =
-  (
-    schema: z.ZodSchema,
-    logger: () => logger.Logger,
-    injectDefaultPermissions: boolean = false
-  ) =>
+export const injectDefaultVisibility =
+  (schema: z.ZodSchema) =>
   async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      // console.log(schema);
-      // logger().info(
-      //   `injectDefaultPermissions: ${injectDefaultPermissions}, schema: ${schema instanceof z.ZodObject}`
-      // );
-      if (injectDefaultPermissions && schema instanceof z.ZodObject) {
-        let instanceOfVisibility = true;
-        for (const key of Object.keys(schemas.VisibilitySchema.shape)) {
-          if (!(key in schema.shape)) {
-            instanceOfVisibility = false;
-            break;
-          }
+    if (schema instanceof z.ZodObject) {
+      let instanceOfVisibility = true;
+      for (const key of Object.keys(schemas.VisibilitySchema.shape)) {
+        if (!(key in schema.shape)) {
+          instanceOfVisibility = false;
+          break;
         }
-        // logger().info(`instanceOfVisibility: ${instanceOfVisibility}`);
-        if (instanceOfVisibility) {
-          if (!authentication_strategy.isUserAuthenticated(req)) {
-            res.status(401).json({ error: "Not authorised" });
-            return;
-          }
-          // if (!(req.body instanceof object)) {
-          //   res.status(400).json({ error: "Invalid request" });
-          //   return;
-          // }
-          // Inject default values for creator and visibility
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          const creator = req.body?.creator as string;
-          // if (!authentication_strategy.isUserAuthenticated(req)) {
-          //   throw new HTTPError(500, "Could not resolve the logged user");
-          // }
-          let user = authentication_strategy.getUserFromSession(req);
-          // Check if there's a temporary user (for NO-AUTH users)
-          // if ((req as any).temporaryUser) {
-          //   user = (req as any).temporaryUser;
-          // }
+      }
+      // logger().debug(`instanceOfVisibility: ${instanceOfVisibility}`);
+      if (instanceOfVisibility) {
+        if (!authentication_strategy.isUserAuthenticated(req)) {
+          res.status(401).json({ error: "Not authorised" });
+          return;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        const creator = req.body?.creator as string;
+        const user = authentication_strategy.getUserFromSession(req);
 
+        if (creator) {
           if (
-            !creator &&
             user.permissions.includes(
               authentication_strategy.Permissions.Administration
             )
           ) {
-            // For NO-AUTH users with temporary ID, we don't need to look up in DB
-            if (user.provider === "NO-AUTH") {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-              req.body.creator = user.id;
-            } else {
-              const loggedUser = await userRepository().findById(user.id);
-              if (!loggedUser) {
-                throw new HTTPError(500, "Could not resolve the logged user");
-              }
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-              req.body.creator = loggedUser.id;
-            }
+            next();
+            return;
           }
-          if (!("visibility" in req.body))
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            req.body["visibility"] = schemas.Visibility.Private;
         }
+
+        // For NO-AUTH users with temporary ID, we don't need to look up in DB
+        if (user.provider === "NO-AUTH") {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          req.body.creator = user.id;
+        } else {
+          const loggedUser = await findCachedUsersById(user.id);
+          if (!loggedUser) {
+            throw new HTTPError(500, "Could not resolve the logged user");
+          }
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          req.body.creator = loggedUser.id;
+        }
+
+        if (!("visibility" in req.body))
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          req.body["visibility"] = schemas.Visibility.Private;
       }
+    }
+    next();
+  };
+
+export const validateRequestBody =
+  (schema: z.ZodSchema, logger: () => logger.Logger) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
       schema.parse(req.body);
       next();
     } catch (error) {
@@ -146,9 +140,6 @@ export const validateRequestBody =
       }
     }
   };
-
-const userRepository = () => injector().resolve("userRepository");
-const usersCache = () => injector().resolve("usersCache");
 
 // const agentRepository = () => injector.resolve("agentRepository");
 // const agentsCache = () => injector.resolve("agentsCache");
@@ -168,9 +159,7 @@ export const verifyPermission = async (
   }
 
   const userFromSession = authentication_strategy.getUserFromSession(req);
-  const user = await usersCache().get(userFromSession.id, async () => {
-    return await userRepository().findById(userFromSession.id);
-  });
+  const user = await findCachedUsersById(userFromSession.id);
 
   if (!user) {
     if (raiseException) throw new HTTPError(401, "Not authenticated");
@@ -217,9 +206,9 @@ export const verifyPermission = async (
   );
 };
 
-function asZodObject(x: z.ZodSchema): z.SomeZodObject {
+function asZodObject(x: z.ZodSchema): z.ZodObject {
   if ("partial" in (x as object)) {
-    return x as z.SomeZodObject;
+    return x as z.ZodObject;
   } else {
     throw new Error(`Not a ZodObject`);
   }
@@ -303,10 +292,10 @@ export function crudGenerator<T extends object>({
 
           res.json(await cache.get(`${name}_list`, () => resultFactory(req)));
         } catch (error) {
+          logger().error(error);
           if (error instanceof HTTPError) {
             res.status(error.errorCode).json({ error: error.message });
           } else {
-            logger().error(error);
             res.status(500).json({ error: `Failed to get ${name} list` });
           }
         }
@@ -317,7 +306,8 @@ export function crudGenerator<T extends object>({
     router.post(
       "/",
       authorise(writePermissions),
-      validateRequestBody(schema, logger, true),
+      injectDefaultVisibility(schema),
+      validateRequestBody(schema, logger),
       async (req, res) => {
         try {
           const createFactory = getFactoryFromOption(endpoints.create, () =>
@@ -328,10 +318,10 @@ export function crudGenerator<T extends object>({
           getCacheForOption(endpoints.create).clear();
           res.status(204).end();
         } catch (error) {
+          logger().error(error);
           if (error instanceof HTTPError) {
             res.status(error.errorCode).json({ error: error.message });
           } else {
-            logger().error(error);
             res.status(500).json({ error: `Failed to create the ${name}` });
           }
         }
@@ -341,7 +331,8 @@ export function crudGenerator<T extends object>({
   if (endpoints.get !== undefined && endpoints.get !== false)
     router.get("/:id", authorise(readPermissions), async (req, res) => {
       if (!req.params.id) {
-        res.status(500).send("Id is required");
+        logger().error("Id is required");
+        res.status(400).json({ error: "Id is required" });
         return;
       }
       try {
@@ -359,10 +350,10 @@ export function crudGenerator<T extends object>({
           res.status(404).json({ error: `${name} not found` });
         }
       } catch (error) {
+        logger().error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          logger().error(error);
           res.status(500).json({ error: `Failed to get the ${name}` });
         }
       }
@@ -375,7 +366,8 @@ export function crudGenerator<T extends object>({
       validateRequestBody(asZodObject(schema).partial(), logger),
       async (req, res) => {
         if (!req.params.id) {
-          res.status(500).send("Id is required");
+          logger().error("Id is required");
+          res.status(400).json({ error: "Id is required" });
           return;
         }
         try {
@@ -396,10 +388,10 @@ export function crudGenerator<T extends object>({
             res.status(404).json({ error: `${name} not found` });
           }
         } catch (error) {
+          logger().error(error);
           if (error instanceof HTTPError) {
             res.status(error.errorCode).json({ error: error.message });
           } else {
-            logger().error(error);
             res.status(500).json({ error: `Failed to update the ${name}` });
           }
         }
@@ -412,7 +404,8 @@ export function crudGenerator<T extends object>({
       authorise(writePermissions),
       async (req, res) => {
         if (!req.params.id) {
-          res.status(500).send("Id is required");
+          logger().error("Id is required");
+          res.status(400).json({ error: "Id is required" });
           return;
         }
         try {
@@ -432,10 +425,10 @@ export function crudGenerator<T extends object>({
               .end();
           }
         } catch (error) {
+          logger().error(error);
           if (error instanceof HTTPError) {
             res.status(error.errorCode).json({ error: error.message });
           } else {
-            logger().error(error);
             res.status(500).json({ error: `Failed to delete the ${name}` });
           }
         }
@@ -453,15 +446,37 @@ export function permissionsManagerGenerator<
   repository,
   logger,
   writePermissions,
+  afterVisibilityChangeCallback,
 }: PermissionsOptions<T>) {
+  // For the meantime, only ADMINISTRATORS have the GUI functionality to set the creator.
+  // TBD: evaluate if normal users, that have the UserRead permission, should still be allowed
   router.post(
     "/:id/_setCreator",
-    authorise([authentication_strategy.Permissions.Administration]),
+    authorise(
+      writePermissions
+        ? [...writePermissions, authentication_strategy.Permissions.UsersRead]
+        : [authentication_strategy.Permissions.UsersRead]
+    ),
     validateRequestBody(
       z.object({ creator: z.string().min(1, "Creator is required") }).strict(),
       logger
     ),
     async (req, res) => {
+      // // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // const creator = req.body?.creator as string;
+      // const user = authentication_strategy.getUserFromSession(req);
+      // const isAdministrator = user.permissions.includes(
+      //   authentication_strategy.Permissions.Administration
+      // );
+
+      // if (!isAdministrator && user.id != creator) {
+      //   logger().error(`Attempted to set the creator without permission`);
+      //   res
+      //     .status(401)
+      //     .json({ error: `You are not allowed to user this functionality` });
+      //   return;
+      // }
+
       const dbObject = await repository().findById(req.params.id);
       if (!dbObject) {
         res.status(404).send(`${name} not found`);
@@ -472,6 +487,7 @@ export function permissionsManagerGenerator<
         req.body as Partial<T>
       );
       if (!update) {
+        logger().error(`Failed to set the creator of the entity`);
         res
           .status(500)
           .json({ error: `Failed to set the creator of the entity` });
@@ -487,7 +503,8 @@ export function permissionsManagerGenerator<
     validateRequestBody(schemas.VisibilitySchema.strict(), logger),
     async (req, res) => {
       if (!req.params.id) {
-        res.status(500).send("Id is required");
+        logger().error("Id is required");
+        res.status(400).json({ error: "Id is required" });
         return;
       }
       const dbObject = await repository().findById(req.params.id);
@@ -498,10 +515,10 @@ export function permissionsManagerGenerator<
       try {
         await verifyPermission(dbObject, req, "write", true);
       } catch (error) {
+        logger().error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          logger().error(error);
           res.status(500).json({
             error: `Failed to check the user permissions of the ${name}`,
           });
@@ -513,6 +530,9 @@ export function permissionsManagerGenerator<
       try {
         await repository().setVisibility(req.params.id, visibility);
         fetchCache().clear();
+        if (afterVisibilityChangeCallback) {
+          await afterVisibilityChangeCallback(req.params.id, visibility);
+        }
         res.status(204).end();
       } catch (error) {
         logger().error(error);
@@ -522,4 +542,11 @@ export function permissionsManagerGenerator<
       }
     }
   );
+}
+
+export async function getUserWithIdFromRepository(
+  username: string
+): Promise<schemas.UserWithId | null> {
+  const userRepository = injector().resolve("userRepository");
+  return await userRepository.findByUserId(username);
 }

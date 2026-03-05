@@ -35,13 +35,15 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { createAgent, getAgentDetail, updateAgent } from "@/services/agents";
+import {
+  createAgent,
+  getAgentDetail,
+  isAgentRegisteredWithIdentityPropagationService,
+  updateAgent,
+} from "@/services/agents";
 // import { isWithErrorsObject } from "@/services/utils";
-import { exceptionToMessage } from "@/utils/type-utils";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { toast } from "sonner";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -49,8 +51,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { useService } from "@/hooks/useService";
+import { isWithErrorsObject } from "@/services/utils";
+import { generateRandomString } from "@/utils/string-utils";
+import { exceptionToMessage } from "@/utils/type-utils";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
 const AgentOptionsWithTagStringSchema =
   endpoints_schemas.AgentCreateSchema.merge(
@@ -92,7 +101,7 @@ export default function AgentEditDialog({
 
   useEffect(() => {
     async function loadServerData() {
-      if (serverId) {
+      if (serverId && dialogOpen) {
         const serverData = await getAgentDetail(serverId);
         // if (!isWithErrorsObject(serverData)) {
         setServer({
@@ -113,8 +122,24 @@ export default function AgentEditDialog({
     }
 
     loadServerData();
-  }, [serverId]);
+  }, [serverId, dialogOpen]);
 
+  const [loadingOIDCRegistration, registration] = useService(
+    async () => {
+      if (
+        !!server &&
+        serverId &&
+        !isWithErrorsObject(server) &&
+        server.authentication?.type === "oidc_client_secret"
+      ) {
+        return await isAgentRegisteredWithIdentityPropagationService(serverId);
+      } else {
+        return null;
+      }
+    },
+    [server, dialogOpen, serverId],
+    null
+  );
   const form = useForm({
     resolver: zodResolver(AgentOptionsWithTagStringSchema),
     values: server,
@@ -154,238 +179,332 @@ export default function AgentEditDialog({
   return (
     <Dialog open={dialogOpen} onOpenChange={(open) => setDialogOpen(open)}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{serverId ? "Edit" : "New"} Agent</DialogTitle>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <ScrollArea className="h-[60vh]">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => {
-                  return (
-                    <FormItem>
-                      <FormLabel>Agent Name</FormLabel>
-                      <FormControl>
-                        <Input type="text" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        Name to assign to this agent
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => {
-                  return (
-                    <FormItem>
-                      <FormLabel>Agent Description</FormLabel>
-                      <FormControl>
-                        <Input type="text" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        A short description for the agent
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
-              <FormField
-                control={form.control}
-                name="serverPath"
-                render={({ field }) => {
-                  return (
-                    <FormItem>
-                      <FormLabel>Agent Path</FormLabel>
-                      <FormControl>
-                        <Input type="text" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        Enter the path segment that to reach the Agent
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
-
-              <div className="flex flex-row items-center mb-4">
+      {dialogOpen && (
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{serverId ? "Edit" : "New"} Agent</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <ScrollArea className="h-[60vh]">
                 <FormField
                   control={form.control}
-                  name="serverProtocol"
-                  render={({ field }) => (
-                    <FormItem className="w-1/2">
-                      <FormLabel>Server Protocol</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select protocol" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="http">Streamable HTTP</SelectItem>
-                          <SelectItem value="sse">SSE (legacy)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        Connection protocol type
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="serverUrl"
-                  render={({ field }) => (
-                    <FormItem className="w-1/2">
-                      <FormLabel>Server URL</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormDescription>The host to connect to</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={form.control}
-                name="authentication.type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Authentication Type</FormLabel>
-
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select the authentication type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        <SelectItem value="basic">Basic Auth</SelectItem>
-                        <SelectItem value="token">Token</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      The authentication used by the client, select "none"" if
-                      not available
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {authentication?.type === "basic" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="authentication.username"
-                    render={({ field }) => (
+                  name="name"
+                  render={({ field }) => {
+                    return (
                       <FormItem>
-                        <FormLabel>Username</FormLabel>
+                        <FormLabel>Agent Name</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input type="text" {...field} />
                         </FormControl>
                         <FormDescription>
-                          The username to use to connect to the client
+                          Name to assign to this agent
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => {
+                    return (
+                      <FormItem>
+                        <FormLabel>Agent Description</FormLabel>
+                        <FormControl>
+                          <Input type="text" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          A short description for the agent
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+                <FormField
+                  control={form.control}
+                  name="serverPath"
+                  render={({ field }) => {
+                    return (
+                      <FormItem>
+                        <FormLabel>Agent Path</FormLabel>
+                        <FormControl>
+                          <Input type="text" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Enter the path segment that to reach the Agent
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+
+                <div className="flex flex-row items-center mb-4">
+                  <FormField
+                    control={form.control}
+                    name="serverProtocol"
+                    render={({ field }) => (
+                      <FormItem className="w-1/2">
+                        <FormLabel>Server Protocol</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select protocol" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="a2a">A2A</SelectItem>
+                            <SelectItem value="http">
+                              Streamable HTTP
+                            </SelectItem>
+                            <SelectItem value="sse">SSE (legacy)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Connection protocol type
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
                   <FormField
                     control={form.control}
-                    name="authentication.password"
+                    name="serverUrl"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
+                      <FormItem className="w-1/2">
+                        <FormLabel>Server URL</FormLabel>
                         <FormControl>
                           <Input {...field} />
                         </FormControl>
                         <FormDescription>
-                          The password to use to connect to the client
+                          The host to connect to
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
-              )}
-
-              {authentication?.type === "token" && (
                 <FormField
                   control={form.control}
-                  name="authentication.token"
+                  name="authentication.type"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Token</FormLabel>
-                      <FormControl>
-                        <Textarea {...field} rows={3} />
-                      </FormControl>
+                      <FormLabel>Authentication Type</FormLabel>
+
+                      <Select
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select the authentication type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          <SelectItem value="basic">Basic Auth</SelectItem>
+                          <SelectItem value="token">Token</SelectItem>
+                          <SelectItem value="oidc_client_secret">
+                            OIDC Client Secret
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                       <FormDescription>
-                        The token used to connect to the client
+                        The authentication used by the client, select "none"" if
+                        not available. The OIDC Client Secret Password is not
+                        used while authenticating, it's just a field used to
+                        store/generate e password and is sent in case of dynamic
+                        registration issued by Aloha. To change OIDC credential,
+                        the client must not be registered on the OIDC server.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-              )}
 
-              <FormField
-                control={form.control}
-                name="tags"
-                render={({ field }) => {
-                  return (
-                    <FormItem>
-                      <FormLabel>Tags (comma-separated)</FormLabel>
-                      <FormControl>
-                        <Input type="text" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        List of tags separated by a comma
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
+                {authentication?.type === "basic" && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="authentication.username"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Username</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormDescription>
+                            The username to use to connect to the client
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="authentication.password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Password</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormDescription>
+                            The password to use to connect to the client
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
 
-              <DialogFooter className="justify-end">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                  {form.formState.isSubmitting
-                    ? "Saving..."
-                    : serverId
-                      ? "Edit Agent"
-                      : "Create Agent"}
-                </Button>
-              </DialogFooter>
-            </ScrollArea>
-          </form>
-        </Form>
-      </DialogContent>
+                {authentication?.type === "token" && (
+                  <FormField
+                    control={form.control}
+                    name="authentication.token"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Token</FormLabel>
+                        <FormControl>
+                          <Textarea {...field} rows={3} />
+                        </FormControl>
+                        <FormDescription>
+                          The token used to connect to the client
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {authentication?.type === "oidc_client_secret" &&
+                  loadingOIDCRegistration && (
+                    <div className="ml-2">
+                      <Label>Please wait...</Label>
+                    </div>
+                  )}
+
+                {authentication?.type === "oidc_client_secret" &&
+                  !loadingOIDCRegistration && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="authentication.clientId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Client Id</FormLabel>
+                            <FormControl>
+                              <div className="flex">
+                                <Input
+                                  {...field}
+                                  className="mr-2"
+                                  disabled={registration?.registered === true}
+                                />
+                                <Button
+                                  disabled={registration?.registered === true}
+                                  type="button"
+                                  onClick={() =>
+                                    field.onChange(generateRandomString())
+                                  }
+                                >
+                                  Generate
+                                </Button>
+                              </div>
+                            </FormControl>
+                            <FormDescription>
+                              The Client ID the client uses to connect to the
+                              IDP. This field is used to obtain a bearer token
+                              to connect to the client and must be the same
+                              value used by the client to connect to the IDP
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="authentication.clientSecret"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Client Secret</FormLabel>
+                            <FormControl>
+                              <div className="flex">
+                                <Input
+                                  {...field}
+                                  className="mr-2"
+                                  disabled={registration?.registered === true}
+                                />
+                                <Button
+                                  disabled={registration?.registered === true}
+                                  type="button"
+                                  onClick={() =>
+                                    field.onChange(generateRandomString())
+                                  }
+                                >
+                                  Generate
+                                </Button>
+                              </div>
+                            </FormControl>
+                            <FormDescription>
+                              The Client Secret the client uses to connect to
+                              the IDP, this is just a place to store this
+                              information. This field is not shared with any
+                              party and you are free to let it blank
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
+                <FormField
+                  control={form.control}
+                  name="tags"
+                  render={({ field }) => {
+                    return (
+                      <FormItem>
+                        <FormLabel>Tags (comma-separated)</FormLabel>
+                        <FormControl>
+                          <Input type="text" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          List of tags separated by a comma
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+
+                <DialogFooter className="justify-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={form.formState.isSubmitting}>
+                    {form.formState.isSubmitting
+                      ? "Saving..."
+                      : serverId
+                        ? "Edit Agent"
+                        : "Create Agent"}
+                  </Button>
+                </DialogFooter>
+              </ScrollArea>
+            </form>
+          </Form>
+        </DialogContent>
+      )}
     </Dialog>
   );
 }

@@ -25,6 +25,8 @@ import { useNavigate } from "react-router";
 import { WithErrors } from "@/services/utils";
 import { WrenchScrewdriverIcon } from "@heroicons/react/16/solid";
 import { Cable } from "lucide-react";
+import { TagsList } from "@/components/tags-list";
+import { CardHeaderConnectionIndicator } from "@/components/card-header-connection-indicator";
 
 interface AgentCardProps {
   agent:
@@ -38,20 +40,17 @@ export function AgentCard({ agent }: AgentCardProps) {
     <Card
       key={agent.id}
       onClick={() => navigate(`/agents/${agent.id}`)}
-      className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl"
+      className="transform hover:scale-105 transition-all duration-200 ease-in-out cursor-pointer bg-white shadow-lg rounded-xl border border-gray-100 hover:shadow-xl flex flex-col h-full"
     >
       <CardHeader className="pb-4">
-        <CardTitle className="flex justify-between items-center">
-          <span className="text-lg font-semibold text-gray-900 truncate">
+        <CardTitle className="flex justify-between items-start truncate gap-3">
+          <span className="text-lg font-semibold text-gray-900 truncate min-w-0 flex-1">
             {agent.name}
           </span>
-          <span
-            className={`w-3 h-3 rounded-full ${agent.isConnected ? "bg-green-500" : "bg-red-500"} ring-2 ${agent.isConnected ? "ring-green-200" : "ring-red-200"}`}
-            title={agent.isConnected ? "Connected" : "Disconnected"}
-          ></span>
+          <CardHeaderConnectionIndicator value={agent} />
         </CardTitle>
       </CardHeader>
-      <CardContent className="text-sm text-gray-600 mb-4">
+      <CardContent className="text-sm text-gray-600 mb-4 flex-grow">
         {"isError" in agent && (
           <p className="text-red-600 font-medium mb-2">
             Error: Connection issue
@@ -60,9 +59,15 @@ export function AgentCard({ agent }: AgentCardProps) {
         <p className="line-clamp-3">
           {agent.description || "No description provided"}
         </p>
+        <TagsList item={agent} inline={true} />
       </CardContent>
       <CardFooter className="border-t border-gray-100 pt-4">
-        {agent.isConnected ? (
+        {agent.disabled ? (
+          <div className="text-sm text-gray-600 flex items-center">
+            <span className="w-2 h-2 bg-gray-500 rounded-full mr-2 animate-pulse"></span>
+            Agent disabled
+          </div>
+        ) : agent.isConnected ? (
           <div className="flex items-center justify-between w-full text-sm">
             <div className="flex items-center space-x-3">
               <WrenchScrewdriverIcon className="w-4 h-4 mr-1" />

@@ -34,7 +34,7 @@ const projectRepository = () => injector().resolve("projectRepository");
 const userRepository = () => injector().resolve("userRepository");
 
 export function tokensRoutes() {
-  logger().info("Registering tokens router");
+  logger().debug("Registering tokens router");
 
   const router = crudGenerator<schemas.JWTToken>({
     name: "tokens",
@@ -64,7 +64,7 @@ export function tokensRoutes() {
     validateRequestBody(endpoints_schemas.JWTTokenRequestSchema, logger),
     async (req: Request, res: Response) => {
       const log = logger().child({ jwtTokenRequest: req.body as unknown });
-      log.info("Create new JWT Token");
+      log.debug("Create new JWT Token");
       try {
         // if (!authentication_strategy.isUserAuthenticated(req)) {
         //   res.status(500).json({ error: "Could not resolve the logged user" });
@@ -76,6 +76,7 @@ export function tokensRoutes() {
           projectId: request.project,
         });
         if (!projects || projects.length == 0) {
+          log.error("Failed to retrieve the provided project");
           res
             .status(500)
             .json({ error: "Failed to retrieve the provided project" });
@@ -104,7 +105,7 @@ export function tokensRoutes() {
           expirationDate: new Date(request.expirationDate),
           disabled: false,
         });
-        const jwt = createJwtToken(newToken);
+        const jwt = await createJwtToken(newToken);
 
         fetchCache().clear();
         res.send({ token: jwt }).end();
@@ -123,7 +124,7 @@ export function tokensRoutes() {
     async (req: Request, res: Response) => {
       const { id } = req.params;
       const log = logger().child({ jwtTokenId: id });
-      log.info("Disable token");
+      log.debug("Disable token");
 
       try {
         const token = await repository().findById(id);

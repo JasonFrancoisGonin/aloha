@@ -1,0 +1,279 @@
+/*
+Copyright (C) 2025 European Union
+ 
+Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the
+European Commission – subsequent versions of the EUPL (the “Licence”);
+You may not use this work except in compliance with the Licence.
+You may obtain a copy of the Licence at:
+* https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12 *
+
+Unless required by applicable law or agreed to in writing, software distributed under
+the Licence is distributed on an “AS IS” basis, WITHOUT WARRANTIES OR CONDITIONS
+OF ANY KIND, either express or implied. See the Licence for the specific language
+governing permissions and limitations under the Licence.
+*/
+
+import { schemas } from "aloha-shared";
+import { ConnectionOptionsRepository } from "../database/repositories/interfaces/connection-options-repository";
+import { injector } from "../injector/injector";
+import { getLogger } from "../injector/provide-logger";
+import { TokenSetProvider } from "../middleware/oidc/oidc-support";
+import { A2AClient } from "./a2a-client";
+import MCPClient from "./mcp-client";
+import MCPServer from "./mcp-server";
+import { isA2AAgent } from "../utils/a2a-utils";
+import { A2AServer } from "./a2a-server";
+
+const logger = getLogger("MCPMANAGER");
+
+class MCPManager {
+  public static inject = ["connectionOptionsRepository"] as const;
+  private connections: Map<string, MCPClient | A2AClient> = new Map();
+  private servers: Map<string, MCPServer | A2AServer> = new Map();
+  private serversByPath: Map<string, MCPServer | A2AServer> = new Map();
+  private startDate: Date | null = null;
+  private pingHandle: ReturnType<typeof setInterval> | null = null;
+
+  public constructor(
+    private connectionOptionsRepository: ConnectionOptionsRepository
+  ) {}
+
+  public getStartDate() {
+    return this.startDate;
+  }
+
+  getConnection(id: string): A2AClient | MCPClient | undefined;
+  getConnection(id: string, type: typeof A2AClient): A2AClient | undefined;
+  getConnection(id: string, type: typeof MCPClient): MCPClient | undefined;
+  getConnection(
+    id: string,
+    type?: typeof MCPClient | typeof A2AClient
+  ): MCPClient | A2AClient | undefined {
+    const result = this.connections.get(id);
+
+    if (!result) {
+      return undefined;
+    }
+
+    if (!type) {
+      return result;
+    }
+
+    if (result instanceof type) {
+      return result;
+    }
+
+    return undefined;
+  }
+
+  getConnections() {
+    return this.connections.values();
+  }
+
+  createConnection(
+    serverOptions: schemas.MCPBaseConnectionWithId | schemas.AgentWithId,
+    tokenSetProvider: TokenSetProvider | undefined
+  ): MCPClient | A2AClient {
+    const serverOptionsId = serverOptions.id;
+
+    const log = logger().child({ serverOptionsId: serverOptionsId });
+
+    let connection = this.connections.get(serverOptionsId);
+    if (!connection) {
+      log.debug("Creating new MCP connection handler");
+      if (isA2AAgent(serverOptions)) {
+        connection = new A2AClient(serverOptions, tokenSetProvider);
+      } else {
+        connection = new MCPClient(
+          serverOptions as schemas.MCPBaseConnectionWithId,
+          tokenSetProvider
+        );
+      }
+      this.connections.set(serverOptionsId, connection);
+    }
+    return connection;
+  }
+
+  async removeConnection(id: string) {
+    const log = logger().child({ connectionId: id });
+    log.debug("Removing connection");
+    const connection = this.connections.get(id);
+    if (connection) {
+      await connection.close();
+    }
+
+    this.connections.delete(id);
+  }
+
+  async startPingService() {
+    const log = logger();
+    log.info("Start ping services");
+
+    const pingFunction = async () => {
+      if (this.connections.size === 0) return;
+      const onlineServers = Array.from(this.connections.values()).reduce(
+        (p, c) => p + (c.isConnected ? 1 : 0),
+        0
+      );
+
+      await Promise.all(
+        Array.from(this.connections.values()).map(async (connection) => {
+          try {
+            await connection.pingClient();
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          } catch (e) {
+            // logger().error(e);
+          }
+        })
+      );
+
+      // for (const connection of this.connections.values()) {
+      //   try {
+      //     await connection.pingClient();
+      //     // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      //   } catch (e) {
+      //     // logger().error(e);
+      //   }
+      // }
+      const connectedServers = Array.from(this.connections.values()).reduce(
+        (p, c) => p + (c.isConnected ? 1 : 0),
+        0
+      );
+
+      if (onlineServers !== connectedServers) {
+        logger().debug(
+          {
+            onlineServers: connectedServers,
+            totalServers: this.connections.size,
+          },
+          `MCP servers online`
+        );
+      }
+    };
+    await pingFunction();
+    this.pingHandle = setInterval(() => void pingFunction(), 5000);
+    this.startDate = new Date();
+  }
+
+  public stopPingService() {
+    if (this.pingHandle !== null) {
+      clearInterval(this.pingHandle);
+    }
+    this.pingHandle = null;
+    this.startDate = null;
+  }
+
+  async testConnection(id: string) {
+    const log = logger().child({ connectionId: id });
+    log.debug("Testing connection");
+    const connection = this.connections.get(id);
+    if (connection) {
+      try {
+        await connection.pingClient();
+        return true;
+      } catch (e) {
+        logger().error(e);
+        return false;
+      }
+    }
+    return false;
+  }
+
+  getServer(id: string) {
+    return this.servers.get(id);
+  }
+  getServerByPath(path: string) {
+    return this.serversByPath.get(path);
+  }
+  getServers() {
+    return this.servers.values();
+  }
+
+  createServer(
+    serverOptions: schemas.MCPBaseServerWithId | schemas.AgentWithId
+  ): MCPServer | A2AServer {
+    const serverOptionsId: string = serverOptions.id;
+    const log = logger().child({
+      serverId: serverOptionsId,
+      serverOptions,
+    });
+    const server = this.servers.get(serverOptionsId);
+
+    if (!server) {
+      if (serverOptions.visibility === schemas.Visibility.Private) {
+        // Handle private visibility logic here
+        logger().debug(`Creating private server: ${serverOptions.serverPath}`);
+      } else if (serverOptions.visibility === schemas.Visibility.Public) {
+        // Handle public visibility logic here
+        logger().debug(`Creating public server: ${serverOptions.serverPath}`);
+      } else if (serverOptions.visibility === schemas.Visibility.Managed) {
+        // Handle managed visibility logic here
+        logger().debug(`Creating managed server: ${serverOptions.serverPath}`);
+      }
+
+      let server: MCPServer | A2AServer;
+      let basePathToServe: string;
+
+      if (isA2AAgent(serverOptions)) {
+        server = new A2AServer(serverOptions);
+        basePathToServe = `/api/a2a/${serverOptions.serverPath}`;
+        log.debug({ basePathToServe }, "Serving A2A requests");
+      } else {
+        server = new MCPServer(serverOptions);
+        basePathToServe = `/api/mcp/${serverOptions.serverPath}/messages`;
+        log.debug({ basePathToServe }, "Serving messages");
+      }
+
+      server.serve(basePathToServe);
+      this.servers.set(serverOptionsId, server);
+      this.serversByPath.set(serverOptions.serverPath, server);
+      return server;
+    }
+    return server;
+  }
+
+  async removeServer(id: string) {
+    const server = this.servers.get(id);
+    if (server) {
+      const log = logger().child({ serverId: id });
+      log.debug("Removing server");
+      this.serversByPath.delete(server.options.serverPath);
+      await server.close();
+    }
+
+    this.servers.delete(id);
+  }
+
+  async reloadServer(connectionDefinition: schemas.MCPBaseServerWithId) {
+    const log = logger().child({ connectionId: connectionDefinition.id });
+
+    log.debug("Reloading server definition");
+
+    await this.removeServer(connectionDefinition.id);
+    this.createServer(connectionDefinition);
+  }
+
+  async reloadConnection(
+    connectionDefinition: schemas.MCPBaseConnectionWithId | schemas.AgentWithId
+  ) {
+    const log = logger().child({ connectionId: connectionDefinition.id });
+
+    log.debug("Reloading client definition");
+
+    const prevConnection = this.getConnection(connectionDefinition.id);
+
+    await this.removeConnection(connectionDefinition.id);
+
+    const tokenSetProvider = prevConnection
+      ? prevConnection.tokenSetProvider
+      : injector().resolve("oidcAlohaTokenSetProvider");
+
+    const connection = this.createConnection(
+      connectionDefinition,
+      tokenSetProvider
+    );
+    await connection.connectClient();
+  }
+}
+
+export default MCPManager;

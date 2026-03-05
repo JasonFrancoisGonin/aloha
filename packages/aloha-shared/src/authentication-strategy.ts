@@ -13,16 +13,12 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
+import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { RequestHandler } from "express";
 import { z } from "zod";
 import { Logger } from "./logger.js";
 import { UserWithId } from "./schemas.js";
-
-declare module "express-session" {
-  interface SessionData {
-    user: UserPrincipal;
-  }
-}
+import { isDefined } from "./utils.js";
 
 export enum Permissions {
   ClientsRead = "CLIENTS_READ",
@@ -37,6 +33,8 @@ export enum Permissions {
   Administration = "ADMINISTRATION",
 }
 
+export const PermissionsSchema = z.nativeEnum(Permissions);
+
 export const ANONYMOUS_USER = "anonymous";
 
 export const UserPrincipalSchema = z.object({
@@ -48,6 +46,12 @@ export const UserPrincipalSchema = z.object({
   provider: z.string(),
 });
 export type UserPrincipal = z.infer<typeof UserPrincipalSchema>;
+
+declare module "express-session" {
+  interface SessionData {
+    user: UserPrincipal;
+  }
+}
 
 export const UserPrincipalWithProjectsSchema = UserPrincipalSchema.and(
   z.object({
@@ -76,10 +80,14 @@ export type AuthenticationStrategyInfo = z.infer<
   typeof AuthenticationStrategyInfoSchema
 >;
 
+export type GetUserDetailFunction = (
+  username: string
+) => Promise<UserWithId | null>;
+
 export interface AuthenticationStrategy {
   init(options: AuthenticationStrategyOptions): Promise<void>;
   getAuthenticationMiddleware(
-    getUserDetail: (username: string) => Promise<UserWithId | null>
+    getUserDetail: GetUserDetailFunction
   ): Promise<NewType | RequestHandler[]>;
   checkPermissions(
     user: UserPrincipal,
@@ -97,13 +105,30 @@ export function storeUserIntoSession(
   req.session.user = user;
 }
 
-export function getUserFromSession(req: Express.Request) {
-  if (!req.session.user) {
-    throw new Error(
-      "User not found in session, please call isUserAuthenticated first"
-    );
+export function hasRequestAuthInfoField(
+  req: Express.Request
+): req is Express.Request & {
+  auth: AuthInfo & { extra: { user: UserPrincipal } };
+} {
+  const reqAny = req as unknown as {
+    auth?: AuthInfo & { extra?: { user: UserPrincipal } };
+  };
+  return (
+    isDefined(reqAny.auth) &&
+    isDefined(reqAny.auth.token) &&
+    isDefined(reqAny.auth.clientId) &&
+    isDefined(reqAny.auth.extra?.user)
+  );
+}
+
+export function getUserFromSession(req: Express.Request): UserPrincipal {
+  if (req.session.user) {
+    return req.session.user;
   }
-  return req.session.user;
+  if (hasRequestAuthInfoField(req)) {
+    return req.auth.extra.user;
+  }
+  throw new Error("User not found, please call isUserAuthenticated first");
 }
 
 export function clearSession(
@@ -114,5 +139,5 @@ export function clearSession(
 }
 
 export function isUserAuthenticated(req: Express.Request) {
-  return req.session?.user !== undefined;
+  return req.session?.user !== undefined || hasRequestAuthInfoField(req);
 }

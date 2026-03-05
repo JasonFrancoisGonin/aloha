@@ -15,23 +15,29 @@ governing permissions and limitations under the Licence.
 
 import express, { Router, Request, Response } from "express";
 import { injector } from "../injector/injector";
-import { authentication_strategy } from "aloha-shared";
+import { authentication_strategy, schemas } from "aloha-shared";
 import { getLogger } from "../injector/provide-logger";
+import { findCachedUsersById } from "../utils/cache.utils";
 
-const userRepository = () => injector().resolve("userRepository");
 const projectRepository = () => injector().resolve("projectRepository");
 const logger = getLogger("USER-INFO");
 
 export function userInfoRouter() {
   const router: Router = express.Router();
 
-  logger().info("Registering user info router");
+  logger().debug("Registering user info router");
 
   // Get information of the connected user
   router.get("/", async (req: Request, res: Response) => {
     if (authentication_strategy.isUserAuthenticated(req)) {
       const userSession = authentication_strategy.getUserFromSession(req);
-      const user = await userRepository().findById(userSession.id);
+      let user: schemas.UserWithId | null;
+      try {
+        user = await findCachedUsersById(userSession.id);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (e) {
+        return res.status(204).end();
+      }
       let projects: { id: string; name: string }[] = [];
       if (user && user.projects) {
         projects = await Promise.all(

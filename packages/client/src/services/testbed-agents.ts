@@ -422,6 +422,8 @@ export function agentInstanceMergeEvents(
         id: `au-${idx}`,
         type: "agent_updated",
       });
+    } else {
+      console.log("Unsupported event", event);
     }
   });
 

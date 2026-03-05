@@ -19,11 +19,19 @@ import {
   safeParseWithErrors,
   setCreatorGenerator,
   setVisibilityGenerator,
+  WithErrors,
 } from "./utils";
 
 const apiServersUrl = "/api/server";
 
-export async function getServersListByConnectionId(connectionId: string) {
+export async function getServersListByConnectionId(
+  connectionId: string
+): Promise<
+  (
+    | schemas.MCPServerOptionsWithId
+    | WithErrors<schemas.MCPServerOptionsWithId>
+  )[]
+> {
   const response = await customFetch(
     "Get server list by connectionId",
     `${apiServersUrl}/by_connection_id/${connectionId}`
