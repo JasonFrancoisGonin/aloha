@@ -13,29 +13,20 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { AuthenticationStrategy } from "aloha-shared";
+import { authentication_strategy } from "aloha-shared";
 import { RequestHandler } from "express";
 import { getLogger } from "../injector/provide-logger";
 
 const logger = getLogger("AUTHORISE");
 
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace Express {
-    interface Request {
-      user?: AuthenticationStrategy.UserPrincipal;
-    }
-  }
-}
-
-let authPlugins: AuthenticationStrategy.AuthenticationStrategy[];
+let authPlugins: authentication_strategy.AuthenticationStrategy[] = [];
 
 export function getAuthPlugins() {
   return authPlugins;
 }
 
 export function setAuthPlugins(
-  plugin: AuthenticationStrategy.AuthenticationStrategy[]
+  plugin: authentication_strategy.AuthenticationStrategy[]
 ) {
   authPlugins = plugin;
 }
@@ -43,7 +34,7 @@ export function setAuthPlugins(
 export function authorise(requiredPermissions?: string[]): RequestHandler {
   if (requiredPermissions === undefined) {
     return (_req, _res, next) => {
-      logger().info("No permission to check, pass to next RequestHandler");
+      logger().debug("No permission to check, pass to next RequestHandler");
       next();
     };
   }
@@ -54,17 +45,25 @@ export function authorise(requiredPermissions?: string[]): RequestHandler {
       originalUrl: req.originalUrl,
     });
 
-    if (!req.user) {
+    if (!authentication_strategy.isUserAuthenticated(req)) {
       log.error("No user logged in");
       res.status(401).json({ error: "Not authenticated" });
+      return;
     } else {
       let check: boolean = false;
 
+      if (requiredPermissions.length === 0) {
+        log.debug("No permission to check, pass to next RequestHandler");
+        return next();
+      }
+
+      const user = authentication_strategy.getUserFromSession(req);
+
       for (const p of authPlugins) {
-        check = await p.checkPermissions(req.user, requiredPermissions);
+        check = await p.checkPermissions(user, requiredPermissions);
         if (check) {
-          const info = await p.getInfo();
-          log.info({ provider: info.provider }, "Check passed");
+          // const info = await p.getInfo();
+          // log.debug({ provider: info.provider }, "Check passed");
           break;
         }
       }

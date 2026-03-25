@@ -49,3 +49,11 @@ export function assertFieldInObject<K extends string, T>(
 ): asserts x is Record<K, T> {
   z.object({ [field]: fieldValidator }).parse(x);
 }
+
+export function assertDefined<T>(
+  obj: T | null | undefined
+): asserts obj is NonNullable<T> {
+  if (!obj) {
+    throw new Error("Object must be defined");
+  }
+}

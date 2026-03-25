@@ -13,14 +13,16 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { AuthenticationStrategy, schemas } from "aloha-shared";
+import { authentication_strategy, schemas } from "aloha-shared";
 import { injector } from "../injector/injector";
 import { getLogger } from "../injector/provide-logger";
 import { crudGenerator } from "./utils";
 
 export function projectsRoutes() {
-  const repository = () => injector.resolve("projectRepository");
+  const repository = () => injector().resolve("projectRepository");
   const logger = getLogger("PROJECTS");
+
+  logger().debug("Registering projects router");
 
   return crudGenerator({
     name: "project",
@@ -28,7 +30,7 @@ export function projectsRoutes() {
     repository,
     schema: schemas.ProjectSchema,
     readPermissions: [],
-    writePermissions: [AuthenticationStrategy.Permissions.UsersWrite],
+    writePermissions: [authentication_strategy.Permissions.UsersWrite],
     endpoints: {
       list: true,
       get: true,

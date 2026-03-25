@@ -1,11 +1,15 @@
-# `server`
+# Server documentation
 
-> TODO: description
+## OIDC general considerations
 
-## Usage
+## OIDC support
 
-```
-const server = require('server');
+## KeyCloak implementations
 
-// TODO: DEMONSTRATE API
-```
+### KeyCloak as Authorization Middleware
+
+### KeyCloak as Identity Propagation Service
+
+### KeyCloak as Identity Propagation Service Registrar
+
+#### KeyCloak configuration for default Identity Propagation Service Registrar implementation

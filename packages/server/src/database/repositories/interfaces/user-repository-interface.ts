@@ -17,6 +17,7 @@ import { schemas } from "aloha-shared";
 import { CrudRepository } from "./repository-interfaces";
 
 export interface UsersRepository extends CrudRepository<schemas.User> {
+  count(): Promise<number>;
   findByUserId(
     userId: string
   ): Promise<(schemas.User & schemas.WithIdBase) | null>;

@@ -17,7 +17,45 @@ import "dotenv/config";
 import { Injector } from "typed-inject";
 
 export function provideEnvVars<T>(injector: Injector<T>) {
-  return injector
-    .provideValue("serverSecret", process.env.SERVER_SECRET as string)
-    .provideValue("clientSecret", process.env.CLIENT_SECRET as string);
+  const isProduction =
+    (process.env.NODE_ENV || "development").toLowerCase() === "production";
+
+  const SERVER_SECRET = process.env.SERVER_SECRET;
+  if (!SERVER_SECRET) {
+    throw new Error(
+      "SERVER_SECRET is not defined in the environment variables"
+    );
+  }
+
+  const CLIENT_SECRET = process.env.CLIENT_SECRET;
+  if (!CLIENT_SECRET) {
+    throw new Error(
+      "CLIENT_SECRET is not defined in the environment variables"
+    );
+  }
+
+  const SESSION_SECRET =
+    (process.env.SESSION_SECRET as string) || "default_session_secret";
+
+  const SESSION_MAX_AGE = parseInt(
+    process.env.SESSION_MAX_AGE || String(1000 * 60 * 60 * 24),
+    10
+  );
+
+  const DEFAULT_JWT_AUTHENTICATION =
+    process.env.DEFAULT_JWT_AUTHENTICATION || "true";
+
+  const newInjector = injector
+    .provideValue("isProduction", isProduction)
+    .provideValue(
+      "defaultJWTAuthentication",
+      DEFAULT_JWT_AUTHENTICATION === "true"
+    )
+    .provideValue("pluginPath", process.env.AUTHENTICATION_PLUGIN)
+    .provideValue("serverSecret", SERVER_SECRET)
+    .provideValue("clientSecret", CLIENT_SECRET)
+    .provideValue("sessionSecret", SESSION_SECRET)
+    .provideValue("sessionMaxAge", SESSION_MAX_AGE);
+
+  return newInjector;
 }

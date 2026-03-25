@@ -14,8 +14,8 @@ governing permissions and limitations under the Licence.
 */
 
 import {
-  AuthenticationStrategy,
-  entrypoint_schemas,
+  authentication_strategy,
+  endpoints_schemas,
   schemas,
 } from "aloha-shared";
 import { Request, Response } from "express";
@@ -31,24 +31,25 @@ import {
 } from "./utils";
 import { assertFieldInObject } from "../utils/type-utils";
 import z from "zod";
+import { findCachedUsersById } from "../utils/cache.utils";
 
-const mcpManager = () => injector.resolve("mcpManager");
+const mcpManager = () => injector().resolve("mcpManager");
 
 const logger = getLogger("SERVERS");
-const repository = () => injector.resolve("serverOptionsRepository");
+const repository = () => injector().resolve("serverOptionsRepository");
 
-const fetchCache = () => injector.resolve("fetchCache");
-
-const userRepository = () => injector.resolve("userRepository");
+const fetchCache = () => injector().resolve("fetchCache");
 
 export function serverRoutes() {
+  logger().debug("Registering server router");
+
   const router = crudGenerator({
     name: "server",
     logger: logger,
     repository,
     schema: schemas.MCPServerOptionsSchema,
-    readPermissions: [],
-    writePermissions: [],
+    readPermissions: [authentication_strategy.Permissions.ServersRead],
+    writePermissions: [authentication_strategy.Permissions.ServersWrite],
     endpoints: {
       list: {
         enableCache: false,
@@ -100,10 +101,11 @@ export function serverRoutes() {
                   id: sc,
                   name: connection?.connectionOptions.name,
                   isConnected: connection?.isConnected,
+                  type: connection?.connectionOptions.type,
                 };
               })
               .filter((sc) => sc !== null),
-          } as entrypoint_schemas.MCPServerOptionsDetail;
+          } as endpoints_schemas.MCPServerOptionsDetail;
           return result as schemas.MCPServerOptions;
         },
       },
@@ -122,7 +124,13 @@ export function serverRoutes() {
           newServerData.visibility ?? schemas.Visibility.Private;
 
         // Ensure that the creator is set to the user requesting the creation
-        const loggedUser = await userRepository().findById(req.user!.id);
+
+        // if (!authentication_strategy.isUserAuthenticated(req)) {
+        //   throw new HTTPError(500, "Could not resolve the logged user");
+        // }
+
+        const user = authentication_strategy.getUserFromSession(req);
+        const loggedUser = await findCachedUsersById(user.id);
         if (!loggedUser) {
           throw new HTTPError(500, "Could not resolve the logged user");
         }
@@ -173,13 +181,17 @@ export function serverRoutes() {
 
         // If the server does not have a creator, set it now
         let creator = serverOption.creator;
+        // if (!authentication_strategy.isUserAuthenticated(req)) {
+        //   throw new HTTPError(500, "Could not resolve the logged user");
+        // }
+        const user = authentication_strategy.getUserFromSession(req);
         if (
           !creator &&
-          req.user?.permissions.includes(
-            AuthenticationStrategy.Permissions.Administration
+          user.permissions.includes(
+            authentication_strategy.Permissions.Administration
           )
         ) {
-          const loggedUser = await userRepository().findById(req.user.id);
+          const loggedUser = await findCachedUsersById(user.id);
           if (!loggedUser) {
             throw new HTTPError(500, "Could not resolve the logged user");
           }
@@ -213,25 +225,27 @@ export function serverRoutes() {
   // Associate a client to a server
   router.post(
     "/:id/_connect/:cid",
-    authorise([AuthenticationStrategy.Permissions.ServersWrite]),
+    authorise([authentication_strategy.Permissions.ServersWrite]),
     async (req: Request, res: Response) => {
       assertFieldInObject(req.params, "id", z.string());
       assertFieldInObject(req.params, "cid", z.string());
       const { id, cid } = req.params;
 
       const log = logger().child({ serverId: id, connectionId: cid });
-      log.info("Associate connection to server");
+      log.debug("Associate connection to server");
 
       try {
         if (!id) {
+          log.error("Must provide the id of the server to update");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the server to update" });
           return;
         }
         if (!cid) {
+          log.error("Must provide the id of the client to connect");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the client to connect" });
           return;
         }
@@ -270,10 +284,10 @@ export function serverRoutes() {
           res.status(404).json({ error: "Failed to update server" });
         }
       } catch (error) {
+        log.error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          log.error(error);
           let errorMessage = "Failed to update server";
           if (
             error &&
@@ -292,25 +306,27 @@ export function serverRoutes() {
   // Dissociate a client to a server
   router.post(
     "/:id/_disconnect/:cid",
-    authorise([AuthenticationStrategy.Permissions.ServersWrite]),
+    authorise([authentication_strategy.Permissions.ServersWrite]),
     async (req: Request, res: Response) => {
       assertFieldInObject(req.params, "id", z.string());
       assertFieldInObject(req.params, "cid", z.string());
       const { id, cid } = req.params;
 
       const log = logger().child({ serverId: id, connectionId: cid });
-      log.info("Disconnect client from server");
+      log.debug("Disconnect client from server");
 
       try {
         if (!id) {
+          log.error("Must provide the id of the server to update");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the server to update" });
           return;
         }
         if (!cid) {
+          log.error("Must provide the id of the client to connect");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the client to connect" });
           return;
         }
@@ -341,10 +357,10 @@ export function serverRoutes() {
           res.status(404).json({ error: "Server not found" });
         }
       } catch (error) {
+        log.error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          log.error(error);
           res.status(500).json({ error: "Failed to update server" });
         }
       }
@@ -353,13 +369,13 @@ export function serverRoutes() {
 
   router.get(
     "/by_connection_id/:cid",
-    authorise([AuthenticationStrategy.Permissions.ServersRead]),
+    authorise([authentication_strategy.Permissions.ServersRead]),
     async (req: Request, res: Response) => {
       assertFieldInObject(req.params, "cid", z.string());
       const { cid } = req.params;
 
       const log = logger().child({ connectionId: cid });
-      log.info("Get servers bound to connection");
+      log.debug("Get servers bound to connection");
 
       try {
         if (!cid) {
@@ -384,7 +400,13 @@ export function serverRoutes() {
     name: "servers",
     repository,
     logger,
-    writePermissions: [AuthenticationStrategy.Permissions.ServersWrite],
+    writePermissions: [authentication_strategy.Permissions.ServersWrite],
+    afterVisibilityChangeCallback: (id, visibility) => {
+      const server = mcpManager().getServer(id)!;
+      server.options.disabled = visibility.disabled;
+      server.options.visibility = visibility.visibility;
+      return Promise.resolve();
+    },
   });
 
   return router;

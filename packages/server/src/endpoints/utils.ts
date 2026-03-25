@@ -13,16 +13,18 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { AuthenticationStrategy, logger, schemas } from "aloha-shared";
+import { authentication_strategy, logger, schemas } from "aloha-shared";
 import express, { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
 import { CrudRepository } from "../database/repositories/interfaces/repository-interfaces";
 import { VisibilityRepositoryInterface } from "../database/repositories/interfaces/visibility-repository-interface";
 import { injector } from "../injector/injector";
 import { authorise } from "../middleware/authorise";
+import { findCachedUsersById } from "../utils/cache.utils";
 
-const fetchCache = () => injector.resolve("fetchCache");
-const userProjectsCache = () => injector.resolve("userProjectsCache");
+const fetchCache = () => injector().resolve("fetchCache");
+const userProjectsCache = () => injector().resolve("userProjectsCache");
+const userRepository = () => injector().resolve("userRepository");
 
 type PermissionType = "read" | "write" | "execute";
 
@@ -57,8 +59,8 @@ type Options<T extends object> = {
   repository: () => CrudRepository<T>;
   schema: z.ZodSchema<T>;
   logger: () => logger.Logger;
-  readPermissions?: AuthenticationStrategy.Permissions[];
-  writePermissions?: AuthenticationStrategy.Permissions[];
+  readPermissions?: authentication_strategy.Permissions[];
+  writePermissions?: authentication_strategy.Permissions[];
   endpoints: Partial<EndpointList<T>>;
 };
 type PermissionsOptions<T extends schemas.VisibilityInterface> = {
@@ -66,60 +68,67 @@ type PermissionsOptions<T extends schemas.VisibilityInterface> = {
   name: string;
   repository: () => VisibilityRepositoryInterface<T>;
   logger: () => logger.Logger;
-  writePermissions?: AuthenticationStrategy.Permissions[];
+  writePermissions?: authentication_strategy.Permissions[];
+  afterVisibilityChangeCallback?: (id: string, visibility: T) => Promise<void>;
 };
 
-export const validateRequestBody =
-  (
-    schema: z.ZodSchema,
-    logger: () => logger.Logger,
-    injectDefaultPermissions: boolean = false
-  ) =>
+export const injectDefaultVisibility =
+  (schema: z.ZodSchema) =>
   async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      // console.log(schema);
-      // logger().info(
-      //   `injectDefaultPermissions: ${injectDefaultPermissions}, schema: ${schema instanceof z.ZodObject}`
-      // );
-      if (injectDefaultPermissions && schema instanceof z.ZodObject) {
-        let instanceOfVisibility = true;
-        for (const key of Object.keys(schemas.VisibilitySchema.shape)) {
-          if (!(key in schema.shape)) {
-            instanceOfVisibility = false;
-            break;
-          }
-        }
-        // logger().info(`instanceOfVisibility: ${instanceOfVisibility}`);
-        if (instanceOfVisibility) {
-          if (!req.user?.id) {
-            res.status(401).json({ error: "Not authorised" });
-            return;
-          }
-          // if (!(req.body instanceof object)) {
-          //   res.status(400).json({ error: "Invalid request" });
-          //   return;
-          // }
-          // Inject default values for creator and visibility
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          const creator = req.body?.creator as string;
-          if (
-            !creator &&
-            req.user?.permissions.includes(
-              AuthenticationStrategy.Permissions.Administration
-            )
-          ) {
-            const loggedUser = await userRepository().findById(req.user.id);
-            if (!loggedUser) {
-              throw new HTTPError(500, "Could not resolve the logged user");
-            }
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            req.body.creator = loggedUser.id;
-          }
-          if (!("visibility" in req.body))
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            req.body["visibility"] = schemas.Visibility.Private;
+    if (schema instanceof z.ZodObject) {
+      let instanceOfVisibility = true;
+      for (const key of Object.keys(schemas.VisibilitySchema.shape)) {
+        if (!(key in schema.shape)) {
+          instanceOfVisibility = false;
+          break;
         }
       }
+      // logger().debug(`instanceOfVisibility: ${instanceOfVisibility}`);
+      if (instanceOfVisibility) {
+        if (!authentication_strategy.isUserAuthenticated(req)) {
+          res.status(401).json({ error: "Not authorised" });
+          return;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        const creator = req.body?.creator as string;
+        const user = authentication_strategy.getUserFromSession(req);
+
+        if (creator) {
+          if (
+            user.permissions.includes(
+              authentication_strategy.Permissions.Administration
+            )
+          ) {
+            next();
+            return;
+          }
+        }
+
+        // For NO-AUTH users with temporary ID, we don't need to look up in DB
+        if (user.provider === "NO-AUTH") {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          req.body.creator = user.id;
+        } else {
+          const loggedUser = await findCachedUsersById(user.id);
+          if (!loggedUser) {
+            throw new HTTPError(500, "Could not resolve the logged user");
+          }
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          req.body.creator = loggedUser.id;
+        }
+
+        if (!("visibility" in req.body))
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          req.body["visibility"] = schemas.Visibility.Private;
+      }
+    }
+    next();
+  };
+
+export const validateRequestBody =
+  (schema: z.ZodSchema, logger: () => logger.Logger) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
       schema.parse(req.body);
       next();
     } catch (error) {
@@ -131,9 +140,6 @@ export const validateRequestBody =
       }
     }
   };
-
-const userRepository = () => injector.resolve("userRepository");
-const usersCache = () => injector.resolve("usersCache");
 
 // const agentRepository = () => injector.resolve("agentRepository");
 // const agentsCache = () => injector.resolve("agentsCache");
@@ -147,14 +153,13 @@ export const verifyPermission = async (
   if (obj.visibility == schemas.Visibility.Public && permission == "read")
     return true;
 
-  if (!req.user) {
+  if (!authentication_strategy.isUserAuthenticated(req)) {
     if (raiseException) throw new HTTPError(401, "Not authenticated");
     return false;
   }
 
-  const user = await usersCache().get(req.user.id, async () => {
-    return await userRepository().findById(req.user!.id);
-  });
+  const userFromSession = authentication_strategy.getUserFromSession(req);
+  const user = await findCachedUsersById(userFromSession.id);
 
   if (!user) {
     if (raiseException) throw new HTTPError(401, "Not authenticated");
@@ -164,18 +169,22 @@ export const verifyPermission = async (
   // Creators always have permissions on their objects
   if (obj.creator == user.id) return true;
 
+  // Public objects can be executed by anyone provided they are logged in
+  if (obj.visibility == schemas.Visibility.Public && permission == "execute")
+    return true;
+
   // Administrators always have READ permissions on all objects
   const askReadAndUserIsAdmin =
     permission == "read" &&
     user.permissions.includes(
-      AuthenticationStrategy.Permissions.Administration
+      authentication_strategy.Permissions.Administration
     );
 
   // Administrators always have full permission on orphaned objects
   const objectIsOphanAndUserIsAdmin =
     (obj.creator === undefined || obj.creator === null) &&
     user.permissions.includes(
-      AuthenticationStrategy.Permissions.Administration
+      authentication_strategy.Permissions.Administration
     );
 
   if (askReadAndUserIsAdmin || objectIsOphanAndUserIsAdmin) return true;
@@ -197,9 +206,9 @@ export const verifyPermission = async (
   );
 };
 
-function asZodObject(x: z.ZodSchema): z.SomeZodObject {
+function asZodObject(x: z.ZodSchema): z.ZodObject {
   if ("partial" in (x as object)) {
-    return x as z.SomeZodObject;
+    return x as z.ZodObject;
   } else {
     throw new Error(`Not a ZodObject`);
   }
@@ -241,7 +250,9 @@ function getCacheForOption(
   options: EndpointOptionArray<unknown> | EndpointOption<unknown> | undefined
 ) {
   if (typeof options === "object" && "enableCache" in options) {
-    return options.enableCache ? fetchCache() : injector.resolve("emptyCache");
+    return options.enableCache
+      ? fetchCache()
+      : injector().resolve("emptyCache");
   } else {
     return fetchCache();
   }
@@ -281,10 +292,10 @@ export function crudGenerator<T extends object>({
 
           res.json(await cache.get(`${name}_list`, () => resultFactory(req)));
         } catch (error) {
+          logger().error(error);
           if (error instanceof HTTPError) {
             res.status(error.errorCode).json({ error: error.message });
           } else {
-            logger().error(error);
             res.status(500).json({ error: `Failed to get ${name} list` });
           }
         }
@@ -295,7 +306,8 @@ export function crudGenerator<T extends object>({
     router.post(
       "/",
       authorise(writePermissions),
-      validateRequestBody(schema, logger, true),
+      injectDefaultVisibility(schema),
+      validateRequestBody(schema, logger),
       async (req, res) => {
         try {
           const createFactory = getFactoryFromOption(endpoints.create, () =>
@@ -306,10 +318,10 @@ export function crudGenerator<T extends object>({
           getCacheForOption(endpoints.create).clear();
           res.status(204).end();
         } catch (error) {
+          logger().error(error);
           if (error instanceof HTTPError) {
             res.status(error.errorCode).json({ error: error.message });
           } else {
-            logger().error(error);
             res.status(500).json({ error: `Failed to create the ${name}` });
           }
         }
@@ -319,7 +331,8 @@ export function crudGenerator<T extends object>({
   if (endpoints.get !== undefined && endpoints.get !== false)
     router.get("/:id", authorise(readPermissions), async (req, res) => {
       if (!req.params.id) {
-        res.status(500).send("Id is required");
+        logger().error("Id is required");
+        res.status(400).json({ error: "Id is required" });
         return;
       }
       try {
@@ -337,10 +350,10 @@ export function crudGenerator<T extends object>({
           res.status(404).json({ error: `${name} not found` });
         }
       } catch (error) {
+        logger().error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          logger().error(error);
           res.status(500).json({ error: `Failed to get the ${name}` });
         }
       }
@@ -353,7 +366,8 @@ export function crudGenerator<T extends object>({
       validateRequestBody(asZodObject(schema).partial(), logger),
       async (req, res) => {
         if (!req.params.id) {
-          res.status(500).send("Id is required");
+          logger().error("Id is required");
+          res.status(400).json({ error: "Id is required" });
           return;
         }
         try {
@@ -368,16 +382,16 @@ export function crudGenerator<T extends object>({
 
           const updated = await updateFactory(req);
           if (updated) {
-            getCacheForOption(endpoints.get).clear();
+            getCacheForOption(endpoints.update).clear();
             res.status(204).end();
           } else {
             res.status(404).json({ error: `${name} not found` });
           }
         } catch (error) {
+          logger().error(error);
           if (error instanceof HTTPError) {
             res.status(error.errorCode).json({ error: error.message });
           } else {
-            logger().error(error);
             res.status(500).json({ error: `Failed to update the ${name}` });
           }
         }
@@ -390,7 +404,8 @@ export function crudGenerator<T extends object>({
       authorise(writePermissions),
       async (req, res) => {
         if (!req.params.id) {
-          res.status(500).send("Id is required");
+          logger().error("Id is required");
+          res.status(400).json({ error: "Id is required" });
           return;
         }
         try {
@@ -410,10 +425,10 @@ export function crudGenerator<T extends object>({
               .end();
           }
         } catch (error) {
+          logger().error(error);
           if (error instanceof HTTPError) {
             res.status(error.errorCode).json({ error: error.message });
           } else {
-            logger().error(error);
             res.status(500).json({ error: `Failed to delete the ${name}` });
           }
         }
@@ -431,15 +446,37 @@ export function permissionsManagerGenerator<
   repository,
   logger,
   writePermissions,
+  afterVisibilityChangeCallback,
 }: PermissionsOptions<T>) {
+  // For the meantime, only ADMINISTRATORS have the GUI functionality to set the creator.
+  // TBD: evaluate if normal users, that have the UserRead permission, should still be allowed
   router.post(
     "/:id/_setCreator",
-    authorise([AuthenticationStrategy.Permissions.Administration]),
+    authorise(
+      writePermissions
+        ? [...writePermissions, authentication_strategy.Permissions.UsersRead]
+        : [authentication_strategy.Permissions.UsersRead]
+    ),
     validateRequestBody(
       z.object({ creator: z.string().min(1, "Creator is required") }).strict(),
       logger
     ),
     async (req, res) => {
+      // // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // const creator = req.body?.creator as string;
+      // const user = authentication_strategy.getUserFromSession(req);
+      // const isAdministrator = user.permissions.includes(
+      //   authentication_strategy.Permissions.Administration
+      // );
+
+      // if (!isAdministrator && user.id != creator) {
+      //   logger().error(`Attempted to set the creator without permission`);
+      //   res
+      //     .status(401)
+      //     .json({ error: `You are not allowed to user this functionality` });
+      //   return;
+      // }
+
       const dbObject = await repository().findById(req.params.id);
       if (!dbObject) {
         res.status(404).send(`${name} not found`);
@@ -450,6 +487,7 @@ export function permissionsManagerGenerator<
         req.body as Partial<T>
       );
       if (!update) {
+        logger().error(`Failed to set the creator of the entity`);
         res
           .status(500)
           .json({ error: `Failed to set the creator of the entity` });
@@ -465,7 +503,8 @@ export function permissionsManagerGenerator<
     validateRequestBody(schemas.VisibilitySchema.strict(), logger),
     async (req, res) => {
       if (!req.params.id) {
-        res.status(500).send("Id is required");
+        logger().error("Id is required");
+        res.status(400).json({ error: "Id is required" });
         return;
       }
       const dbObject = await repository().findById(req.params.id);
@@ -476,10 +515,10 @@ export function permissionsManagerGenerator<
       try {
         await verifyPermission(dbObject, req, "write", true);
       } catch (error) {
+        logger().error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          logger().error(error);
           res.status(500).json({
             error: `Failed to check the user permissions of the ${name}`,
           });
@@ -491,6 +530,9 @@ export function permissionsManagerGenerator<
       try {
         await repository().setVisibility(req.params.id, visibility);
         fetchCache().clear();
+        if (afterVisibilityChangeCallback) {
+          await afterVisibilityChangeCallback(req.params.id, visibility);
+        }
         res.status(204).end();
       } catch (error) {
         logger().error(error);
@@ -500,4 +542,11 @@ export function permissionsManagerGenerator<
       }
     }
   );
+}
+
+export async function getUserWithIdFromRepository(
+  username: string
+): Promise<schemas.UserWithId | null> {
+  const userRepository = injector().resolve("userRepository");
+  return await userRepository.findByUserId(username);
 }

@@ -13,7 +13,12 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { entrypoint_schemas, schemas } from "aloha-shared";
+import { RawA2AEvent } from "@/utils/a2a-event-transformer";
+import { MessageSendParams } from "@a2a-js/sdk";
+import { endpoints_schemas, schemas } from "aloha-shared";
+import { AgentDetail } from "node_modules/aloha-shared/dist/endpoints-schemas";
+import { SSE } from "sse.js";
+import z from "zod";
 import {
   customFetch,
   safeParseWithErrors,
@@ -36,8 +41,11 @@ export async function getAgentsListByConnectionId(connectionId: string) {
 // Get all agents
 export async function getAgentsList() {
   const response = await customFetch("Get agent list", apiAgentUrl);
-  const data: entrypoint_schemas.AgentListDetail = await response.json();
-  return safeParseWithErrors(data, entrypoint_schemas.AgentListDetailSchema);
+  const data: endpoints_schemas.AgentListDetail[] = await response.json();
+  // return safeParseWithErrors(data, endpoints_schemas.AgentListDetailSchema);
+  return data.map((connection) =>
+    safeParseWithErrors(connection, endpoints_schemas.AgentListDetailSchema)
+  );
 }
 
 // Get agent details by ID
@@ -46,12 +54,12 @@ export async function getAgentDetail(id: string) {
     "Get agent detail",
     `${apiAgentUrl}/${id}`
   );
-  const data: entrypoint_schemas.AgentDetail = await response.json();
-  return safeParseWithErrors(data, entrypoint_schemas.AgentDetailSchema);
+  const data: endpoints_schemas.AgentDetail = await response.json();
+  return safeParseWithErrors(data, endpoints_schemas.AgentDetailSchema);
 }
 
 // Create a new agent
-export async function createAgent(agentData: entrypoint_schemas.AgentCreate) {
+export async function createAgent(agentData: endpoints_schemas.AgentCreate) {
   await customFetch("Create agent", apiAgentUrl, {
     method: "POST",
     body: JSON.stringify(agentData),
@@ -62,7 +70,7 @@ export async function createAgent(agentData: entrypoint_schemas.AgentCreate) {
 // Update agent by ID
 export async function updateAgent(
   id: string,
-  agentData: entrypoint_schemas.AgentCreate
+  agentData: endpoints_schemas.AgentCreate
 ) {
   await customFetch("Update agent", `${apiAgentUrl}/${id}`, {
     method: "POST",
@@ -112,9 +120,123 @@ export async function getAgentToken(agentId: string) {
     "Get the token of an agent",
     `${apiAgentUrl}/${agentId}/_token`
   );
-  const result: entrypoint_schemas.JWTTokenResponse = await response.json();
-  return safeParseWithErrors(result, entrypoint_schemas.JWTTokenResponseSchema);
+  const result: endpoints_schemas.JWTTokenResponse = await response.json();
+  return safeParseWithErrors(result, endpoints_schemas.JWTTokenResponseSchema);
 }
 
 export const setAgentCreator = setCreatorGenerator(apiAgentUrl);
 export const setAgentVisibility = setVisibilityGenerator(apiAgentUrl);
+
+export async function cancelA2AStream(
+  agentDetail: AgentDetail,
+  taskId: string
+) {
+  const url = `${apiAgentUrl}/${agentDetail.id}/cancelTask`;
+  await customFetch("cancelTask", url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      taskId,
+    }),
+  });
+}
+export async function sendA2AMessageStream(
+  agentDetail: AgentDetail,
+  message: MessageSendParams,
+  callback: (
+    event:
+      | Exclude<RawA2AEvent, MessageSendParams>
+      | { kind: "error"; responseCode: number; data: unknown; final: true }
+      | { kind: "closed"; final: true }
+  ) => Promise<void>
+): Promise<void> {
+  const sse = new SSE(`${apiAgentUrl}/${agentDetail.id}/sendA2AMessageStream`, {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    payload: JSON.stringify(message),
+    // autoReconnect: true,
+    // useLastEventId: true,
+  });
+
+  sse.addEventListener(
+    `message`,
+    async (event: { data: string; id: string; lastEventId: string }) => {
+      const data = JSON.parse(event.data);
+      console.log("Received stream message:", data);
+      await callback(data);
+    }
+  );
+
+  sse.addEventListener(
+    "readystatechange",
+    async (event: { readyState: number }) => {
+      if (event.readyState === 2) {
+        await callback({
+          kind: "closed",
+          final: true,
+        });
+      }
+    }
+  );
+
+  sse.addEventListener(
+    "error",
+    async (event: { responseCode: number; data: unknown }) => {
+      await callback({
+        kind: "error",
+        responseCode: event.responseCode,
+        data: event.data,
+        final: true,
+      });
+    }
+  );
+
+  sse.stream();
+}
+
+export function isA2AMessageSendParams(
+  value: unknown
+): value is MessageSendParams {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    "message" in value &&
+    !!value.message &&
+    typeof value.message === "object" &&
+    "kind" in value.message &&
+    !!value.message.kind &&
+    value.message.kind === "message"
+  );
+}
+
+export async function unregisterAgentWithIdentityPropagationService(
+  id: string
+) {
+  await customFetch(
+    "Unregistering with IDP server",
+    `${apiAgentUrl}/${id}/unregisterWithIdentityPropagationService`,
+    { method: "POST" }
+  );
+}
+
+export async function registerAgentWithIdentityPropagationService(id: string) {
+  await customFetch(
+    "Registering with IDP server",
+    `${apiAgentUrl}/${id}/registerWithIdentityPropagationService`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+export async function isAgentRegisteredWithIdentityPropagationService(
+  id: string
+) {
+  const response = await customFetch(
+    "Get agent IDP registration status",
+    `${apiAgentUrl}/${id}/isRegisteredInIdentityPropagationService`
+  );
+  const data = await response.json();
+  return z.object({ registered: z.boolean() }).parse(data);
+}

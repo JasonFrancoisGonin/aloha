@@ -14,16 +14,37 @@ governing permissions and limitations under the Licence.
 */
 
 import { createInjector } from "typed-inject";
-import { provideDatabase } from "./provide-database";
-import { provideLogger } from "./provide-logger";
-import { provideMcpManager } from "./provide-mcp-manager";
-import { provideEnvVars } from "./provide-env-vars";
 import { provideCaches } from "./provide-caches";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { logger, schemas } from "aloha-shared"; // required by the compiler
+import { provideDatabase } from "./provide-database";
+import { provideEnvVars } from "./provide-env-vars";
+import { provideLogger } from "./provide-logger-instance";
+import { provideMcpManager } from "./provide-mcp-manager";
+import { provideOIDC } from "./provide-oidc";
+import { provideSessionStore } from "./provide-session-store";
 
-export const injector = provideMcpManager(
-  provideDatabase(
-    provideLogger(provideEnvVars(provideCaches(createInjector())))
+import { authentication_strategy, logger, schemas } from "aloha-shared";
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const unusedRefsRequiredBuTheCompiler = [
+  logger,
+  schemas,
+  authentication_strategy,
+];
+
+let defaultInjector = provideMcpManager(
+  provideSessionStore(
+    provideDatabase(
+      provideLogger(
+        provideOIDC(provideEnvVars(provideCaches(createInjector())))
+      )
+    )
   )
-);
+).provideValue("test", false);
+
+export function replaceInjector(newInjector: typeof defaultInjector) {
+  defaultInjector = newInjector;
+}
+
+export function injector() {
+  return defaultInjector;
+}

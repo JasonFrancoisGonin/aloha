@@ -15,46 +15,52 @@ governing permissions and limitations under the Licence.
 
 // const fetchCache = () => injector.resolve("fetchCache");
 
+import { MessageSendParams, TaskStatusUpdateEvent } from "@a2a-js/sdk";
 import {
-  AuthenticationStrategy,
-  entrypoint_schemas,
-  // entrypoint_schemas,
+  authentication_strategy,
+  endpoints_schemas,
+  // endpoints_schemas,
   schemas,
 } from "aloha-shared";
-import {
-  crudGenerator,
-  HTTPError,
-  permissionsManagerGenerator,
-  verifyPermission,
-} from "./utils";
-import { getLogger } from "../injector/provide-logger";
-import { injector } from "../injector/injector";
-// import { z } from "zod";
-import { authorise } from "../middleware/authorise";
-import { stringComparer } from "../utils/sort-comparators";
 import { Request, Response } from "express";
+import { z } from "zod";
+import { injector } from "../injector/injector";
+import { getLogger } from "../injector/provide-logger";
+import { A2AClient } from "../connections/a2a-client";
+import MCPClient from "../connections/mcp-client";
+import { authorise } from "../middleware/authorise";
 import {
   AGENT_PROJECT,
   createJwtToken,
 } from "../middleware/jwt-authentication";
+import { buildTokenSetProviderFromRequest } from "../middleware/oidc/oidc-support";
+import { findCachedUsersById } from "../utils/cache.utils";
+import { stringComparer } from "../utils/sort-comparators";
 import { assertFieldInObject } from "../utils/type-utils";
-import { z } from "zod";
+import {
+  crudGenerator,
+  HTTPError,
+  permissionsManagerGenerator,
+  validateRequestBody,
+  verifyPermission,
+} from "./utils";
 
 const logger = getLogger("AGENT");
 
-const agentRepository = () => injector.resolve("agentRepository");
-const mcpManager = () => injector.resolve("mcpManager");
-const fetchCache = () => injector.resolve("fetchCache");
-const userRepository = () => injector.resolve("userRepository");
+const agentRepository = () => injector().resolve("agentRepository");
+const mcpManager = () => injector().resolve("mcpManager");
+const fetchCache = () => injector().resolve("fetchCache");
 
 export function agentRoutes() {
+  logger().debug("Registering agents router");
+
   const router = crudGenerator<schemas.Agent>({
     name: "agent",
     logger: logger,
     repository: agentRepository,
     schema: schemas.AgentSchema,
-    readPermissions: [AuthenticationStrategy.Permissions.AgentsRead],
-    writePermissions: [AuthenticationStrategy.Permissions.AgentsWrite],
+    readPermissions: [authentication_strategy.Permissions.AgentsRead],
+    writePermissions: [authentication_strategy.Permissions.AgentsWrite],
     endpoints: {
       list: {
         enableCache: false,
@@ -71,7 +77,7 @@ export function agentRoutes() {
 
           permitted.sort(stringComparer("name"));
 
-          const detailedAgents: entrypoint_schemas.AgentListDetail =
+          const detailedAgents: endpoints_schemas.AgentListDetail[] =
             permitted.map(({ id, ...agentOptions }) => {
               const client = mcpManager().getConnection(id);
               const server = mcpManager().getServer(id);
@@ -79,6 +85,10 @@ export function agentRoutes() {
                 ...agentOptions,
                 id: id,
                 isConnected: !!client && client.isConnected && !!server,
+                tools:
+                  client && client instanceof MCPClient
+                    ? client.tools.length
+                    : 0,
               };
             });
 
@@ -103,7 +113,7 @@ export function agentRoutes() {
           return {
             ...agentInfo,
             isConnected: connection && connection.isConnected,
-            tools: connection?.tools,
+            tools: connection instanceof MCPClient ? connection.tools : [],
             connectionsDetail: agentInfo.connections
               ?.map((sc) => {
                 const connection = mcpManager().getConnection(sc);
@@ -112,6 +122,7 @@ export function agentRoutes() {
                   id: sc,
                   name: connection?.connectionOptions.name,
                   isConnected: connection?.isConnected,
+                  type: connection.connectionOptions.type,
                 };
               })
               .filter((sc) => sc !== null),
@@ -136,12 +147,17 @@ export function agentRoutes() {
         const visibility = agentData.visibility ?? schemas.Visibility.Private;
 
         // Ensure that the creator is set to the user requesting the creation
-        const loggedUser = await userRepository().findById(req.user!.id);
+        // if (!authentication_strategy.isUserAuthenticated(req)) {
+        //   throw new HTTPError(500, "Could not resolve the logged user");
+        // }
+
+        const user = authentication_strategy.getUserFromSession(req);
+        const loggedUser = await findCachedUsersById(user.id);
         if (!loggedUser) {
           throw new HTTPError(500, "Could not resolve the logged user");
         }
 
-        const inserted = await agentRepository().create({
+        const inserted: schemas.AgentWithId = await agentRepository().create({
           ...agentData,
           visibility,
           creator: loggedUser.id,
@@ -155,7 +171,10 @@ export function agentRoutes() {
         }
 
         // Create both a connection and a server for this agent
-        mcpManager().createConnection(inserted);
+        const tokenSetProvider = injector().resolve(
+          "oidcAlohaTokenSetProvider"
+        );
+        mcpManager().createConnection(inserted, tokenSetProvider);
         mcpManager().createServer(inserted);
 
         return inserted;
@@ -190,13 +209,14 @@ export function agentRoutes() {
 
         // If the server does not have a creator, set it now
         let creator = newAgentOptions.creator;
+        const user = authentication_strategy.getUserFromSession(req);
         if (
           !creator &&
-          req.user?.permissions.includes(
-            AuthenticationStrategy.Permissions.Administration
+          user?.permissions.includes(
+            authentication_strategy.Permissions.Administration
           )
         ) {
-          const loggedUser = await userRepository().findById(req.user.id);
+          const loggedUser = await findCachedUsersById(user.id);
           if (!loggedUser) {
             throw new HTTPError(500, "Could not resolve the logged user");
           }
@@ -238,11 +258,11 @@ export function agentRoutes() {
 
   router.get(
     "/:id/_token",
-    authorise([AuthenticationStrategy.Permissions.AgentsWrite]),
+    authorise([authentication_strategy.Permissions.AgentsWrite]),
     async (req: Request, res: Response) => {
       const { id } = req.params;
       const log = logger().child({ agentId: id });
-      log.info("Create token for agent creator");
+      log.debug("Create token for agent creator");
 
       try {
         const agent = await agentRepository().findById(id);
@@ -253,15 +273,18 @@ export function agentRoutes() {
 
         await verifyPermission(agent, req, "read");
 
-        const creatorUser = await userRepository().findById(agent.creator);
+        const creatorUser = await findCachedUsersById(agent.creator);
         if (!creatorUser) {
           res.status(404).json({ error: "Creator user not found" });
           return;
         }
-        if (
-          req.user?.id !== creatorUser.id &&
-          req.user?.id !== creatorUser.userId
-        ) {
+
+        // if (!authentication_strategy.isUserAuthenticated(req)) {
+        //   throw new HTTPError(500, "Could not resolve the logged user");
+        // }
+        const user = authentication_strategy.getUserFromSession(req);
+
+        if (user.id !== creatorUser.id && user.id !== creatorUser.userId) {
           res.status(403).json({
             error:
               "Only the creator of an agent can issue tokens for the agent",
@@ -269,7 +292,7 @@ export function agentRoutes() {
           return;
         }
 
-        const tokenRepository = () => injector.resolve("tokenRepository");
+        const tokenRepository = () => injector().resolve("tokenRepository");
         // Delete all existing tokens for this agent
         const existing = await tokenRepository().findByPattern({
           userId: agent.id,
@@ -281,13 +304,13 @@ export function agentRoutes() {
         // Create token without project association for agents
         const newToken = await tokenRepository().create({
           userId: agent.id,
-          permissions: [AuthenticationStrategy.Permissions.ProxyApiAccess],
+          permissions: [authentication_strategy.Permissions.ProxyApiAccess],
           expirationDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
           projectId: AGENT_PROJECT,
           disabled: false,
         });
 
-        const jwt = createJwtToken(newToken);
+        const jwt = await createJwtToken(newToken);
         fetchCache().clear();
         res.send({ token: jwt }).end();
       } catch (e) {
@@ -302,25 +325,27 @@ export function agentRoutes() {
   // Associate a client to a server
   router.post(
     "/:id/_connect/:cid",
-    authorise([AuthenticationStrategy.Permissions.AgentsWrite]),
+    authorise([authentication_strategy.Permissions.AgentsWrite]),
     async (req: Request, res: Response) => {
       // assertFieldInObject(req.params, "id", z.string());
       // assertFieldInObject(req.params, "cid", z.string());
       const { id, cid } = req.params;
 
       const log = logger().child({ serverId: id, connectionId: cid });
-      log.info("Associate connection to Agent");
+      log.debug("Associate connection to Agent");
 
       try {
         if (!id) {
+          log.error("Must provide the id of the Agent to update");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the Agent to update" });
           return;
         }
         if (!cid) {
+          log.error("Must provide the id of the client to connect");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the client to connect" });
           return;
         }
@@ -332,7 +357,7 @@ export function agentRoutes() {
 
         await verifyPermission(server.options, req, "write", true);
 
-        const connectionOption = await injector
+        const connectionOption = await injector()
           .resolve("connectionOptionsRepository")
           .findById(cid);
 
@@ -357,10 +382,10 @@ export function agentRoutes() {
           res.status(404).json({ error: "Failed to update Agent" });
         }
       } catch (error) {
+        log.error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          log.error(error);
           let errorMessage = "Failed to update Agent";
           if (
             error &&
@@ -379,25 +404,27 @@ export function agentRoutes() {
   // Dissociate a client to a server
   router.post(
     "/:id/_disconnect/:cid",
-    authorise([AuthenticationStrategy.Permissions.AgentsWrite]),
+    authorise([authentication_strategy.Permissions.AgentsWrite]),
     async (req: Request, res: Response) => {
       // assertFieldInObject(req.params, "id", z.string());
       // assertFieldInObject(req.params, "cid", z.string());
       const { id, cid } = req.params;
 
       const log = logger().child({ serverId: id, connectionId: cid });
-      log.info("Disconnect client from Agent");
+      log.debug("Disconnect client from Agent");
 
       try {
         if (!id) {
+          log.error("Must provide the id of the Agent to update");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the Agent to update" });
           return;
         }
         if (!cid) {
+          log.error("Must provide the id of the client to connect");
           res
-            .status(500)
+            .status(400)
             .json({ error: "Must provide the id of the client to connect" });
           return;
         }
@@ -428,25 +455,177 @@ export function agentRoutes() {
           res.status(404).json({ error: "Agent not found" });
         }
       } catch (error) {
+        log.error(error);
         if (error instanceof HTTPError) {
           res.status(error.errorCode).json({ error: error.message });
         } else {
-          log.error(error);
           res.status(500).json({ error: "Failed to update Agent" });
         }
       }
     }
   );
 
+  router.post(
+    "/:id/unregisterWithIdentityPropagationService",
+    authorise([authentication_strategy.Permissions.AgentsWrite]),
+    async (req, res) => {
+      assertFieldInObject(req.params, "id", z.string());
+      const { id } = req.params;
+
+      const idps = injector().resolve("oidcIdentityPropagationRegistrar");
+      if (!idps) {
+        logger().error("Identity Propagation Service Registrar not found");
+        res
+          .status(500)
+          .json({ error: "Identity Propagation Service Registrar not found" })
+          .end();
+        return;
+      }
+
+      const identityPropagationServiceRegistrar = await idps;
+
+      const agent = await agentRepository().findById(id);
+
+      if (!agent) {
+        res.status(404).json({ error: "Agent not found" }).end();
+        return;
+      }
+
+      if (!(agent.authentication?.type === "oidc_client_secret")) {
+        res
+          .status(400)
+          .json({ error: "Client authentication type is not supported" })
+          .end();
+        return;
+      }
+      try {
+        await identityPropagationServiceRegistrar.unregisterClient(
+          agent.authentication.clientId
+        );
+        res.status(204).end();
+      } catch (error) {
+        logger().child({ error }).error("Failed to unregister client");
+        res.status(500).json({ error: "Failed to unregister client" });
+      }
+    }
+  );
+
+  router.post(
+    "/:id/registerWithIdentityPropagationService",
+    authorise([authentication_strategy.Permissions.AgentsWrite]),
+    async (req, res) => {
+      assertFieldInObject(req.params, "id", z.string());
+
+      const { id } = req.params;
+
+      const idps = injector().resolve("oidcIdentityPropagationRegistrar");
+
+      if (!idps) {
+        logger().error("Identity Propagation Service Registrar not found");
+        res
+          .status(500)
+          .json({ error: "Identity Propagation Service Registrar not found" })
+          .end();
+        return;
+      }
+
+      const identityPropagationServiceRegistrar = await idps;
+
+      const agent = await agentRepository().findById(id);
+
+      if (!agent) {
+        res.status(404).json({ error: "Agent not found" }).end();
+        return;
+      }
+
+      if (!(agent.authentication?.type === "oidc_client_secret")) {
+        res
+          .status(400)
+          .json({ error: "Client authentication type is not supported" })
+          .end();
+        return;
+      }
+
+      try {
+        await identityPropagationServiceRegistrar.registerClient({
+          client_id: agent.authentication.clientId,
+          secret: agent.authentication.clientSecret,
+          client_name: agent.name,
+          redirect_uris: [],
+          root_url: "",
+        });
+        res.status(204).end();
+      } catch (error) {
+        logger().child({ error }).error("Failed to register client");
+        res.status(500).json({ error: "Failed to register client" });
+      }
+    }
+  );
+  router.get(
+    "/:id/isRegisteredInIdentityPropagationService",
+    authorise([authentication_strategy.Permissions.AgentsRead]),
+    async (req, res) => {
+      assertFieldInObject(req.params, "id", z.string());
+
+      const { id } = req.params;
+
+      const idps = injector().resolve("oidcIdentityPropagationService");
+
+      if (!idps) {
+        logger().error("Identity Propagation Service not found");
+        res
+          .status(500)
+          .json({ error: "Identity Propagation Service not found" })
+          .end();
+        return;
+      }
+
+      const identityPropagationService = await idps;
+
+      const agent = await agentRepository().findById(id);
+
+      if (!agent) {
+        res.status(404).json({ error: "Agent not found" }).end();
+        return;
+      }
+
+      if (!(agent.authentication?.type === "oidc_client_secret")) {
+        res
+          .status(400)
+          .json({ error: "Client authentication type is not supported" })
+          .end();
+        return;
+      }
+
+      const clientId = agent.authentication.clientId;
+      try {
+        const registeredClient =
+          await identityPropagationService.getClientRegistration(clientId);
+
+        res
+          .json({
+            registered: registeredClient !== undefined,
+          })
+          .end();
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (error) {
+        res
+          .json({
+            registered: false,
+          })
+          .end();
+      }
+    }
+  );
   router.get(
     "/by_connection_id/:cid",
-    authorise([AuthenticationStrategy.Permissions.ServersRead]),
+    authorise([authentication_strategy.Permissions.ServersRead]),
     async (req: Request, res: Response) => {
       // assertFieldInObject(req.params, "cid", z.string());
       const { cid } = req.params;
 
       const log = logger().child({ connectionId: cid });
-      log.info("Get agents bound to connection");
+      log.debug("Get agents bound to connection");
 
       try {
         if (!cid) {
@@ -466,12 +645,124 @@ export function agentRoutes() {
     }
   );
 
+  router.post(
+    "/:agentId/cancelTask",
+    validateRequestBody(z.object({ taskId: z.string() }), logger),
+    authorise([authentication_strategy.Permissions.AgentsRead]),
+    async (req, res) => {
+      assertFieldInObject(req.params, "agentId", z.string());
+      const { agentId } = req.params;
+      const message = req.body as { taskId: string };
+      const log = logger().child({ agentId, message });
+      log.debug("Cancel task");
+
+      const agent = await agentRepository().findById(agentId);
+      if (!agent) {
+        res.status(404).json({ error: "Agent not found" });
+        return;
+      }
+
+      const connection = mcpManager().getConnection(agentId, A2AClient);
+      if (!connection) {
+        res.status(404).json({ error: "A2A Connection not found" });
+        return;
+      }
+
+      await connection.cancelTask(message.taskId, {
+        publish(event) {
+          res.json(event).end();
+        },
+      });
+    }
+  );
+  router.post(
+    "/:agentId/sendA2AMessageStream",
+    authorise([authentication_strategy.Permissions.AgentsRead]),
+    async (req, res) => {
+      assertFieldInObject(req.params, "agentId", z.string());
+      const { agentId } = req.params;
+      const message = req.body as MessageSendParams;
+      const log = logger().child({ agentId, message });
+      log.debug("Send message to agent (streaming)");
+
+      const agent = await agentRepository().findById(agentId);
+      if (!agent) {
+        res.status(404).json({ error: "Agent not found" });
+        return;
+      }
+
+      const connection = mcpManager().getConnection(agentId, A2AClient);
+      if (!connection) {
+        res.status(404).json({ error: "A2A Connection not found" });
+        return;
+      }
+
+      const tokenSetProvider = buildTokenSetProviderFromRequest(req);
+      let contextId: string | undefined;
+      let taskId: string | undefined;
+      try {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+
+        await connection.sendMessage(message, tokenSetProvider, (event) => {
+          log.child({ event }).debug("Event");
+          res.write(`data: ${JSON.stringify(event)}\n\n`);
+          if (!contextId) {
+            contextId = event.contextId;
+          }
+          if (!taskId) {
+            if (event.kind === "task") {
+              taskId = event.id;
+            }
+            if (event.kind === "status-update") {
+              taskId = event.taskId;
+            }
+          }
+          return Promise.resolve();
+        });
+      } catch (error) {
+        log.error(error);
+        const msg: TaskStatusUpdateEvent = {
+          final: true,
+          taskId: taskId || "",
+          contextId: contextId || "",
+          kind: "status-update",
+          status: {
+            state: "failed",
+          },
+          metadata: {
+            error: "Failed to send message to agent, check the server logs",
+            detail: error instanceof Error ? error.message : String(error),
+          },
+        };
+        res.write(`data: ${JSON.stringify(msg)}\n\n`);
+      } finally {
+        res.end();
+      }
+    }
+  );
+
   permissionsManagerGenerator({
     router,
     name: "agents",
     repository: agentRepository,
     logger,
-    writePermissions: [AuthenticationStrategy.Permissions.ServersWrite],
+    writePermissions: [authentication_strategy.Permissions.ServersWrite],
+    afterVisibilityChangeCallback: async (id, visibility) => {
+      const connection = mcpManager().getConnection(id)!;
+      const server = mcpManager().getServer(id)!;
+
+      connection.connectionOptions.disabled = visibility.disabled;
+      connection.connectionOptions.visibility = visibility.visibility;
+
+      server.options.disabled = visibility.disabled;
+      server.options.visibility = visibility.visibility;
+
+      await mcpManager().reloadConnection(connection.connectionOptions);
+      await mcpManager().reloadServer(server.options);
+    },
   });
 
   return router;

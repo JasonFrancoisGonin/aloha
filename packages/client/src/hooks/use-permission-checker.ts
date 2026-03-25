@@ -16,11 +16,11 @@ governing permissions and limitations under the Licence.
 import { UserContext } from "@/context/contexes";
 import { WithErrors } from "@/services/utils";
 import { isDefined } from "@/utils/type-utils";
-import { AuthenticationStrategy, schemas } from "aloha-shared";
+import { authentication_strategy, schemas } from "aloha-shared";
 import { useContext } from "react";
 
 export interface PermissionChecker {
-  has(permission: AuthenticationStrategy.Permissions): boolean;
+  has(permission: authentication_strategy.Permissions): boolean;
   isAdministrator(): boolean;
   hasOwnership(
     obj:
@@ -29,6 +29,7 @@ export interface PermissionChecker {
       | null
       | undefined
   ): boolean;
+  hasVisibility(obj: schemas.VisibilityInterface | null | undefined): boolean;
   hasPublicVisibility(
     obj: schemas.VisibilityInterface | null | undefined
   ): boolean;
@@ -39,7 +40,8 @@ export interface PermissionChecker {
 
 export function usePermissionChecker(): PermissionChecker {
   const user = useContext(UserContext);
-  const has = (permission: AuthenticationStrategy.Permissions) => {
+
+  const has = (permission: authentication_strategy.Permissions) => {
     return isDefined(user) && user.permissions.includes(permission);
   };
 
@@ -49,12 +51,32 @@ export function usePermissionChecker(): PermissionChecker {
   ) => {
     return isDefined(obj) && obj.visibility === visibility;
   };
+  const hasOwnership = (
+    obj: schemas.VisibilityInterface | null | undefined
+  ) => {
+    return isDefined(user) && isDefined(obj) && obj.creator === user.id;
+  };
   return {
     has: (permission) => has(permission),
     isAdministrator: () =>
-      has(AuthenticationStrategy.Permissions.Administration),
-    hasOwnership: (obj) => {
-      return isDefined(user) && isDefined(obj) && obj.creator === user.id;
+      has(authentication_strategy.Permissions.Administration),
+    hasOwnership,
+    hasVisibility: (obj) => {
+      // Administrators have READ access to all objects
+      if (has(authentication_strategy.Permissions.Administration)) {
+        return true;
+      }
+
+      if (hasVisibility(obj, schemas.Visibility.Public)) return true;
+      if (hasVisibility(obj, schemas.Visibility.Private) && hasOwnership(obj))
+        return true;
+      if (
+        hasVisibility(obj, schemas.Visibility.Managed) &&
+        obj?.projects?.some((p) => user?.projects?.find((up) => up.id === p))
+      ) {
+        return true;
+      }
+      return false;
     },
     hasPublicVisibility: (obj) => hasVisibility(obj, schemas.Visibility.Public),
     hasPrivateVisibility: (obj) =>

@@ -1,192 +1,224 @@
 # ALOHA
 
-Aloha (AI Logical Orchestrator Hub for Agents) is a Hub to manage and
-connect tools with AI Agents.
+> NOTE: https://github.com/ec-jrc/aloha is mirrored repository. Issues and Pull requests will still be evaluated, but consider sending them to [https://code.europa.eu/aloha/aloha](https://code.europa.eu/aloha/aloha)
 
-It is built leveraging the [Model Context Protocol](https://modelcontextprotocol.io/).
+Aloha (AI Logical Orchestrator Hub for Agents) is a centralized hub to manage and interconnect data and AI Agents. Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) and [Agent-to-Agent (A2A) protocol](https://github.com/a2a-js/sdk), it enables communication between applications, MCP servers, and AI agents, enhancing tool discoverability and interoperability.
 
-You can use it to quickly set up MCP servers that relay tools disseminated
-over the net, and to create and connect agents with such servers.
+ALOHA provides out-of-the-box functionality to test MCP servers, connect A2A agents, and run demo agents directly in your browser.
 
-It provides out of the box functionalities to connect and run smart AI agents.
+[![Homepage](docs/assets/homepage.png)](docs/assets/homepage.png)
 
-## Deployment
+## Key Features
 
-To run, you first need to clone this repository
-`git clone PLACEHOLDER_URL`
+### MCP Server Management
 
-If you do not yet have `pnpm` installed, run first `npm install -g pnpm`,
-then run `pnpm install`
+- Connect to both local and remote MCP servers with support for different authentication strategies
+- Test MCP server responses directly from the browser to debug and improve tools
+- Supported authentication methods:
+  - Basic authentication
+  - Bearer token
+  - OpenID Connect
 
-Now you can build Aloha by running `pnpm lerna run build` and,
-after configuring it, serve it with
-`pnpm lerna run start` ([See the development section](#development))
+[![MCP Clients page](docs/assets/MCP_clients.gif)](docs/assets/MCP_clients.gif)
+
+---
+
+### A2A Agent Integration
+
+- Register and manage A2A-compatible agents
+- Send tasks to remote agents and receive streaming responses
+- All agents act as MCP servers for tool access
+- Assign MCP clients to agents through the UI
+
+---
+
+### Proxy Servers with Identity Propagation
+
+- Easily deploy proxy servers to simplify connections between agents/applications and tools
+- Single endpoint management with identity propagation (for OpenID Connect clients)
+- Focus on writing only the essential code
+
+[![MCP Servers page](docs/assets/MCP_servers.gif)](docs/assets/MCP_servers.gif)
+
+---
+
+### Agent Development
+
+- Run agentic loops directly in your browser using OpenAI-compatible endpoints
+- Test MCP server and A2A agent performance with agent workflows
+
+[![MCP Agents page](docs/assets/MCP_agent.gif)](docs/assets/MCP_agent.gif)
+
+---
+
+## Documentation
+
+For detailed user guides and platform documentation, see the [User Manual](docs/introduction.md).
+
+---
+
+## Quick Start
+
+```bash
+# Clone the repository, then:
+cd aloha
+
+# Install dependencies
+npm install -g pnpm
+pnpm install
+
+# Build and run
+pnpm lerna run build
+pnpm lerna run start
+```
+
+## Deployment Options
+
+### 1. Monorepo Setup (Recommended)
+
+```bash
+# Start development servers
+pnpm lerna run dev
+```
+
+### 2. Docker Compose
+
+```bash
+# Start all services with Docker Compose
+docker-compose up
+```
+
+### 3. Standalone Packages
+
+First, build the shared packages, then run each package individually:
+
+```bash
+# Build shared packages
+pnpm lerna run build --scope aloha-shared
+```
+
+On the first terminal run the server:
+
+```bash
+# Server (standalone)
+pnpm lerna run dev --scope server
+```
+
+On another terminal run the client:
+
+```bash
+# Client (standalone)
+pnpm lerna run dev --scope client
+```
 
 ## Configuration
 
-### Server Configuration
+### Core Environment Variables
 
-As default, Aloha relies on an existing MongoDB database to store information.
-You can provide the [connection string](https://www.mongodb.com/docs/manual/reference/connection-string/)
-to the database in the server package with the environment variable `MONGODB_URI`.
+| Variable                | Description                      | Default Value                     |
+| ----------------------- | -------------------------------- | --------------------------------- |
+| `MONGODB_URI`           | MongoDB connection string        | `mongodb://127.0.0.1:27017/ALOHA` |
+| `SERVER_PORT`           | Server HTTP port                 | `3000`                            |
+| `VITE_SERVER_PORT`      | Client dev server port           | `5173`                            |
+| `API_URL`               | Base API URL for client requests | `http://localhost`                |
+| `SERVER_SECRET`         | Server authentication secret     | (required)                        |
+| `CLIENT_SECRET`         | Client authentication secret     | (required)                        |
+| `AUTHENTICATION_PLUGIN` | Path to custom auth plugin       | (optional)                        |
 
-It is possible to specify the port of the server, by setting the
-environment variable `SERVER_PORT`, and then providing it
-to the client by setting the full URL of the server in
-the environment variable `VITE_SERVER_URL` [See the client configuration section](#client-configuration).
+### Setup Instructions
 
-For \*nix environment, you can create a sample `.env` file running the commands
+1. **Create environment files**:
 
-```bash
-cp ./packages/server/env.example ./packages/server/.env
-```
+   ```bash
+   # For monorepo setup
+   cp .env.example .env
+   cp packages/server/env.example packages/server/.env
+   cp packages/client/env.example packages/client/.env
 
-The sample configuration is
+   # For standalone packages
+   cd packages/server && cp env.example .env
+   cd packages/client && cp env.example .env
+   ```
 
-```ini
-SERVER_PORT=3000
-MONGODB_URI=mongodb://127.0.0.1:27017/ALOHA
-SERVER_SECRET=replace me with a random secret key
-CLIENT_SECRET=replace me with a random secret key
-```
-
-Please, set the variables according to your needs
-
-### MongoDB configuration
-
-You have to configure a MongoDB instance to store the ALOHA data.
-An existing instance can be used or you can start a dedicated one
-by using `docker`.
-
-Here below are the steps to start a MongoDB instance using Docker:
-
-1. From the ALOHA project root create a directory called `mongodb_data`
-
+2. **Configure MongoDB** (using Docker):
    ```bash
    mkdir ./mongodb_data
-   ```
-
-2. Start MongoDB with docker
-
-   ```bash
    docker run -p 27017:27017 \
-              -v $PWD/mongodb_data:/data/db \
-              --name mongodb \
-              -it \
-              --rm \
-              docker.io/mongo
+     -v $PWD/mongodb_data:/data/db \
+     --name mongodb \
+     -it \
+     --rm \
+     docker.io/mongo
    ```
 
-### Client configuration
+## Authentication System
 
-In order to use the ALOHA client in development mode, you have to configure
-the `VITE_SERVER_PORT` and `API_URL`.
+ALOHA supports multiple authentication methods:
 
-On \*nix environment, to use the default configuration run
+- **Plugin-based authentication** - Implement the `AuthenticationStrategy` interface from `aloha-shared` to create custom auth providers
+- **OpenID Connect** - Built-in support for OIDC providers like Keycloak with identity propagation
 
-```bash
-cp ./packages/client/env.example ./packages/client//.env
-```
+### OpenID Connect Configuration
 
-The sample configuration is
+When using OpenID Connect, configure these environment variables:
 
-```ini
-VITE_SERVER_PORT=5173
-API_URL=http://localhost
-```
+| Variable                                    | Description                                      |
+| ------------------------------------------- | ------------------------------------------------ |
+| `OIDC_ENABLED`                              | Enable OIDC authentication                       |
+| `OIDC_ISSUER_URL`                           | OIDC provider issuer URL (e.g., Keycloak realm) |
+| `OIDC_CLIENT_ID`                            | OIDC client identifier                           |
+| `OIDC_JWKS`                                 | JSON Web Key Set for token validation            |
+| `OIDC_IDENTITY_PROPAGATION_SERVICE_PATH`    | Path to identity propagation service             |
+| `OIDC_IDENTITY_PROPAGATION_REGISTRAR_PATH`  | Path to client registrar service                 |
 
-### Authentication and authorisation
-
-By default, Aloha comes without an authentication and authorisation layer.
-Everyone with access to your instance can do everything!
-
-You can build your own, by creating a new project in plugins, and
-implementing the interface `AuthenticationStrategy` defined in package
-`aloha-shared`.
-
-You should then set the path to the plugin, in the environment variable
-`AUTHENTICATION_PLUGIN`
-
-Here is an example of such plugin:
+### Example Plugin Implementation
 
 ```typescript
-import {
-  AuthenticationStrategy,
-  UserPrincipal,
-} from "aloha-shared/library/AuthenticationStrategy";
+import { authentication_strategy } from "aloha-shared";
 import { RequestHandler } from "express";
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: UserPrincipal;
-    }
-  }
-}
-
-const myAuthPlugin: AuthenticationStrategy = {
+const myAuthPlugin: authentication_strategy.AuthenticationStrategy = {
   async getAuthenticationMiddleware(): Promise<
     RequestHandler | RequestHandler[]
   > {
-    console.log("Using Custom authentication");
     return [
-      // Your authentication middleware stack
       (req, res, next) => {
-        // For example: JWT validation, OAuth handling, etc.
-        req.user = {
+        const mockUser = {
           id: "123",
-          displayName: "",
-          permissions: [
-            "CLIENTS_READ",
-            "CLIENTS_WRITE",
-            "SERVERS_READ",
-            "SERVERS_WRITE",
-          ],
-        }; // Mock user
+          userId: "userId",
+          displayName: "John Doe",
+          permissions: ["CLIENTS_READ", "SERVERS_WRITE"],
+          provider: "SAMPLE",
+        };
+
+        authentication_strategy.storeUserIntoSession(req, mockUser);
         next();
       },
     ];
   },
 
-  async checkPermissions(user: UserPrincipal, requiredPermissions: string[]) {
+  async checkPermissions(user, requiredPermissions) {
     return requiredPermissions.every((perm) => user.permissions.includes(perm));
   },
 
-  async login(){
-    return return (req, res, next) => {
-      // Logic for login
-      next();
-    };
-  },
-
-  async logout(): RequestHandler | RequestHandler[] {
+  async login() {
     return (req, res, next) => {
+      // Login logic
       next();
     };
   },
 
+  async logout() {
+    return (req, res, next) => {
+      // Logout logic
+      next();
+    };
+  },
 
   async getInfo() {
-    return {
-      provider: PROVIDER_NAME,
-    };
+    return { provider: "CUSTOM" };
   },
 };
 
 export default myAuthPlugin;
 ```
-
-### Development
-
-1. Clone the repository
-2. Install the dependencies `pnpm install`
-3. Build aloha-shared and all plugins
-   `(cd packages/aloha-shared && pnpm install && pnpm run build)`
-4. Run the server in development mode `pnpm lerna run dev`
-
-### Production
-
-1. Clone the repository
-2. Install the dependencies `pnpm install`
-3. Build the server in production mode `lerna run build`
-4. Run the server `cd packages/server && pnpn run start`

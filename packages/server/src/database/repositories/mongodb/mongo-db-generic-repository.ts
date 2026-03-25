@@ -56,13 +56,13 @@ export class MongoDBGenericRepository<T extends { [k: string]: unknown }>
     return e;
   }
   protected transformOnWrite(e: Partial<T>): Partial<T> {
-    return e;
+    return { ...e };
   }
 
   protected mapIdField<U extends { [k: string]: unknown } = T>(
-    user: WithId<U>
+    item: WithId<U>
   ): U & schemas.WithIdBase {
-    const result = { ...user, id: user._id.toString() } as U &
+    const result = { ...item, id: item._id.toString() } as U &
       schemas.WithIdBase;
     delete result._id;
     return result;
@@ -70,8 +70,8 @@ export class MongoDBGenericRepository<T extends { [k: string]: unknown }>
 
   async findByPattern(item: Partial<T>): Promise<(T & schemas.WithIdBase)[]> {
     const filter = item as Filter<T>; // only find by example is valid
-    const users = await this.getCollection().find(filter).toArray();
-    return users
+    const items = await this.getCollection().find(filter).toArray();
+    return items
       .map((e) => this.mapIdField(e))
       .map((e) => this.transformOnRead(e));
   }
@@ -81,11 +81,11 @@ export class MongoDBGenericRepository<T extends { [k: string]: unknown }>
       _id: new ObjectId(id),
     } as Filter<T>;
 
-    const user = await this.getCollection().findOne(filter);
-    if (user === null) {
+    const item = await this.getCollection().findOne(filter);
+    if (item === null) {
       return null;
     }
-    return this.transformOnRead(this.mapIdField(user));
+    return this.transformOnRead(this.mapIdField(item));
   }
 
   async create(item: T): Promise<T & schemas.WithIdBase> {

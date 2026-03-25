@@ -82,4 +82,8 @@ export class MongoDBUserRepository extends MongoDBGenericRepository<schemas.User
 
     return projects.map((e) => this.mapIdField(e));
   }
+
+  count(): Promise<number> {
+    return this.getCollection().countDocuments();
+  }
 }

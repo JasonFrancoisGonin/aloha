@@ -26,7 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { DocumentCheckIcon } from "@heroicons/react/16/solid";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AuthenticationStrategy, schemas } from "aloha-shared";
+import { authentication_strategy, schemas } from "aloha-shared";
 import { ReactNode, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -47,16 +47,11 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { useService } from "@/hooks/useService";
+import { camelCaseToSpaces } from "@/utils/string-utils";
 
 const ALL_PERMISSION_ENTRIES = Object.entries(
-  AuthenticationStrategy.Permissions
+  authentication_strategy.Permissions
 ).filter(([, value]) => typeof value === "string");
-
-const camelCaseToSpaces = (str: string): string => {
-  return str
-    .replace(/([a-z])([A-Z])/g, "$1 $2") // Insert space between lower and upper case
-    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2"); // Insert space between consecutive upper case followed by lower case
-};
 
 type Props = {
   children: ReactNode;

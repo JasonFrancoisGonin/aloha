@@ -17,15 +17,34 @@ import { Toaster } from "@/components/ui/sonner";
 import Header from "../components/header";
 import Menu from "../components/menu";
 import Routing from "./routing";
+import { useEffect, useState } from "react";
 
 export default function App() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkDevice = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkDevice();
+    window.addEventListener("resize", checkDevice);
+    return () => window.removeEventListener("resize", checkDevice);
+  }, []);
+
   return (
-    <div className="bg-slate-900 min-h-full w-full flex flex-col">
+    <div className="bg-slate-900 h-screen w-screen flex flex-col overflow-y-clip">
       <Header />
-      <div className="grow-1 flex">
-        <Menu />
-        <div className="grow-1 px-12 py-8 bg-slate-100 rounded-tl-xl">
-          <Routing />
+      <div className="grow flex min-h-0">
+        {/* Hide sidebar menu on mobile */}
+        {!isMobile && <Menu />}
+        <div
+          className={`grow-1 bg-slate-100 overflow-auto ${isMobile ? "" : "rounded-t-xl"}`}
+        >
+          <div className="mx-12 my-8 lg:mx-16 lg:my-12">
+            <Routing />
+          </div>
+          <div className="h-16"></div>
         </div>
       </div>
       <Toaster position="bottom-right" theme="light" />

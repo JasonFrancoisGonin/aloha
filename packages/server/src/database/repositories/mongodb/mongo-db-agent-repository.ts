@@ -23,7 +23,7 @@ import cloneDeep from "clone-deep";
 import { decrypt, encrypt } from "../../../utils/crypto";
 
 export class MongoDbAgentRepository
-  extends MongoDBVisibilityRepository<schemas.AgentWithId>
+  extends MongoDBVisibilityRepository<schemas.Agent>
   implements AgentRepository
 {
   public static inject = ["serverSecret", INJECTOR_TOKEN] as const;

@@ -13,25 +13,12 @@ OF ANY KIND, either express or implied. See the Licence for the specific languag
 governing permissions and limitations under the Licence.
 */
 
-import { schemas } from "aloha-shared";
+import { authentication_strategy, schemas } from "aloha-shared";
 import { Injector, Scope } from "typed-inject";
 import { Cache } from "../cache/cache-nodecache";
-import { AlohaJWTPayload } from "../middleware/jwt-authentication";
 
 export function provideCaches<T>(injector: Injector<T>) {
   return (
-    injector
-      .provideClass("emptyCache", Cache<unknown>, Scope.Transient)
-      .provideClass("jwtCache", Cache<AlohaJWTPayload>, Scope.Singleton)
-      .provideClass("fetchCache", Cache<object>, Scope.Singleton)
-      .provideClass(
-        "userProjectsCache",
-        Cache<schemas.ProjectWithId[]>,
-        Scope.Singleton
-      )
-      // .provideClass("tokensCache", Cache<schemas.JWTTokenWithId>, Scope.Singleton)
-      .provideClass("usersCache", Cache<schemas.UserWithId>, Scope.Singleton)
-      .provideClass("agentsCache", Cache<schemas.AgentWithId>, Scope.Singleton)
     // .provideClass(
     //   "projectsCache",
     //   Cache<schemas.ProjectWithId>,
@@ -47,5 +34,21 @@ export function provideCaches<T>(injector: Injector<T>) {
     //   Cache<schemas.MCPServerOptionsWithId>,
     //   Scope.Singleton
     // )
+    injector
+      .provideClass("emptyCache", Cache<unknown>, Scope.Transient)
+      .provideClass(
+        "jwtCache",
+        Cache<authentication_strategy.UserPrincipal>,
+        Scope.Singleton
+      )
+      .provideClass("fetchCache", Cache<object>, Scope.Singleton)
+      .provideClass(
+        "userProjectsCache",
+        Cache<schemas.ProjectWithId[]>,
+        Scope.Singleton
+      )
+      // .provideClass("tokensCache", Cache<schemas.JWTTokenWithId>, Scope.Singleton)
+      .provideClass("usersCache", Cache<schemas.UserWithId>, Scope.Singleton)
+      .provideClass("agentsCache", Cache<schemas.AgentWithId>, Scope.Singleton)
   );
 }
